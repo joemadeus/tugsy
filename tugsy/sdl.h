@@ -1,10 +1,13 @@
 #ifndef SDL_H
 #define SDL_H
 
+#include <exception>
 #include <iostream>
 #include <utility>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+
+using namespace std;
 
 const int SCREEN_X = 25;
 const int SCREEN_Y = 100;
@@ -15,19 +18,19 @@ class SdlState {
 public:
 	SdlState();
 	~SdlState();
-	bool loadView();
+	bool loadView() const;
 	std::string getResourcePath();
 
 private:
-	void initContext();
-	void initResourcePath();
+	int initContext();
+	int initResourcePath();
 
 	SDL_Window *window;
 	SDL_Renderer *renderer;
 	std::string baseRes;
 };
 
-void logError();
+void logSDLError(std::ostream &os, const std::string &msg);
 
 /*
  * Recurse through the list of arguments to clean up, cleaning up

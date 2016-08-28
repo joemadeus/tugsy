@@ -1,47 +1,54 @@
 #include <sdl.h>
 
 SdlState::SdlState() {
-	initContext();
-	initResourcePath();
+	if (initContext() > 0) {
+		throw exception();
+	}
+
+	if (initResourcePath() > 0) {
+		throw exception();
+	}
 }
 
 SdlState::~SdlState() {
-	cleanup(this.window, this.renderer);
+	cleanup(this->window, this->renderer);
 	IMG_Quit();
 	SDL_Quit();
 }
 
-void SdlState::initContext() {
+int SdlState::initContext() {
 	if (SDL_Init(SDL_INIT_VIDEO) != 0){
 		logSDLError(std::cout, "SDL_Init");
-		// TODO: throw
+		return 1;
 	}
 
-	this.window = SDL_CreateWindow(
+	this->window = SDL_CreateWindow(
 		"tugsy-dev", SCREEN_X, SCREEN_Y, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-	if (this.window == nullptr){
+	if (this->window == nullptr){
 		logSDLError(std::cout, "CreateWindow");
 		SDL_Quit();
-		// TODO: throw
+		return 1;
 	}
 
-	this.renderer = SDL_CreateRenderer(
-		this.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-	if (this.renderer == nullptr){
+	this->renderer = SDL_CreateRenderer(
+		this->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	if (this->renderer == nullptr){
 		logSDLError(std::cout, "CreateRenderer");
-		cleanup(this.window);
+		cleanup(this->window);
 		SDL_Quit();
-		// TODO: throw
+		return 1;
 	}
 
 	if ((IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) != IMG_INIT_PNG){
 		logSDLError(std::cout, "IMG_Init");
 		SDL_Quit();
-		// TODO: throw
+		return 1;
 	}
+
+	return 0;
 }
 
-void SdlState::initResourcePath() {
+int SdlState::initResourcePath() {
     const char PATH_SEP = '/';
 
 	// SDL_GetBasePath will return NULL if something went wrong in retrieving the path
@@ -49,9 +56,11 @@ void SdlState::initResourcePath() {
 	if (basePath){
 		baseRes = basePath;
 		SDL_free(basePath);
+		return 0;
+
 	} else {
 		std::cerr << "Error getting resource path: " << SDL_GetError() << std::endl;
-		// TODO: throw
+		return 1;
 	}
 
 	// We replace the last bin/ with res/ to get the the resource path
@@ -59,7 +68,11 @@ void SdlState::initResourcePath() {
 	baseRes = baseRes.substr(0, pos) + "res" + PATH_SEP;
 }
 
-std::string SdlState::getSDLResourcePath() {
+bool SdlState::loadView() const {
+	return true;
+}
+
+std::string SdlState::getResourcePath() {
 	return baseRes;
 }
 
