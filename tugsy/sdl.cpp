@@ -1,5 +1,68 @@
 #include <sdl.h>
 
+SdlState::SdlState() {
+	initContext();
+	initResourcePath();
+}
+
+SdlState::~SdlState() {
+	cleanup(this.window, this.renderer);
+	IMG_Quit();
+	SDL_Quit();
+}
+
+void SdlState::initContext() {
+	if (SDL_Init(SDL_INIT_VIDEO) != 0){
+		logSDLError(std::cout, "SDL_Init");
+		// TODO: throw
+	}
+
+	this.window = SDL_CreateWindow(
+		"tugsy-dev", SCREEN_X, SCREEN_Y, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+	if (this.window == nullptr){
+		logSDLError(std::cout, "CreateWindow");
+		SDL_Quit();
+		// TODO: throw
+	}
+
+	this.renderer = SDL_CreateRenderer(
+		this.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	if (this.renderer == nullptr){
+		logSDLError(std::cout, "CreateRenderer");
+		cleanup(this.window);
+		SDL_Quit();
+		// TODO: throw
+	}
+
+	if ((IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) != IMG_INIT_PNG){
+		logSDLError(std::cout, "IMG_Init");
+		SDL_Quit();
+		// TODO: throw
+	}
+}
+
+void SdlState::initResourcePath() {
+    const char PATH_SEP = '/';
+
+	// SDL_GetBasePath will return NULL if something went wrong in retrieving the path
+	char *basePath = SDL_GetBasePath();
+	if (basePath){
+		baseRes = basePath;
+		SDL_free(basePath);
+	} else {
+		std::cerr << "Error getting resource path: " << SDL_GetError() << std::endl;
+		// TODO: throw
+	}
+
+	// We replace the last bin/ with res/ to get the the resource path
+	size_t pos = baseRes.rfind("bin");
+	baseRes = baseRes.substr(0, pos) + "res" + PATH_SEP;
+}
+
+std::string SdlState::getSDLResourcePath() {
+	return baseRes;
+}
+
 /**
  * Log an SDL error with some error message to the output stream of our choice
  * @param os The output stream to write the message to
@@ -7,63 +70,4 @@
  */
 void logSDLError(std::ostream &os, const std::string &msg){
 	os << msg << " error: " << SDL_GetError() << std::endl;
-}
-
-void shutdown(sdl_state_t& sdl_state) {
-    cleanup(sdl_state.window, sdl_state.renderer);
-    IMG_Quit();
-    SDL_Quit();
-}
-
-int init(sdl_state_t& sdl_state) {
-    if (SDL_Init(SDL_INIT_VIDEO) != 0){
-    	logSDLError(std::cout, "SDL_Init");
-    	return 1;
-    }
-
-    sdl_state.window = SDL_CreateWindow(
-        "tugsy-dev", SCREEN_X, SCREEN_Y, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-    if (sdl_state.window == nullptr){
-    	logSDLError(std::cout, "CreateWindow");
-    	SDL_Quit();
-    	return 1;
-    }
-
-    sdl_state.renderer = SDL_CreateRenderer(
-        sdl_state.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (sdl_state.renderer == nullptr){
-    	logSDLError(std::cout, "CreateRenderer");
-    	cleanup(sdl_state.window);
-    	SDL_Quit();
-    	return 1;
-    }
-
-    if ((IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) != IMG_INIT_PNG){
-    	logSDLError(std::cout, "IMG_Init");
-    	SDL_Quit();
-    	return 1;
-    }
-
-    return 0;
-}
-
-std::string getSDLResourcePath() {
-    const char PATH_SEP = '/';
-    static std::string baseRes;
-    if (baseRes.empty()){
-		//SDL_GetBasePath will return NULL if something went wrong in retrieving the path
-		char *basePath = SDL_GetBasePath();
-		if (basePath){
-			baseRes = basePath;
-			SDL_free(basePath);
-		} else {
-			std::cerr << "Error getting resource path: " << SDL_GetError() << std::endl;
-			return "";
-		}
-		//We replace the last bin/ with res/ to get the the resource path
-		size_t pos = baseRes.rfind("bin");
-		baseRes = baseRes.substr(0, pos) + "res" + PATH_SEP;
-	}
-
-    return baseRes;
 }

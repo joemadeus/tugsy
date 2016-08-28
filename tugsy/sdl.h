@@ -11,10 +11,23 @@ const int SCREEN_Y = 100;
 const int SCREEN_WIDTH  = 480;
 const int SCREEN_HEIGHT = 800;
 
-struct sdl_state_t {
+class SdlState {
+public:
+	SdlState();
+	~SdlState();
+	bool loadView();
+	std::string getResourcePath();
+
+private:
+	void initContext();
+	void initResourcePath();
+
 	SDL_Window *window;
 	SDL_Renderer *renderer;
-} sdl_state ;
+	std::string baseRes;
+};
+
+void logError();
 
 /*
  * Recurse through the list of arguments to clean up, cleaning up
@@ -65,10 +78,5 @@ inline void cleanup<SDL_Surface>(SDL_Surface *surf){
 	}
 	SDL_FreeSurface(surf);
 }
-
-std::string getSDLResourcePath();
-int init(sdl_state_t& sdl_state);
-void logSDLError();
-void shutdown(sdl_state_t& sdl_state);
 
 #endif
