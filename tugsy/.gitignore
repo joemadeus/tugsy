@@ -1,5 +1,6 @@
 # QGIS Files
 *.qgs~
+tugsy
 
 # Prerequisites
 *.d

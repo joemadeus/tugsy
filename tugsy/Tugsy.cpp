@@ -4,43 +4,51 @@ Tugsy::Tugsy(SdlState &state) {
     this->sdlState = state;
 }
 
-int Tugsy::OnExecute(){
+int Tugsy::onExecute(){
 
     // We never explicitly exit, instead relying on our ability to
-    // handle a signal or cntl-c appropriately
-    while(true) {
+    // handle a signal appropriately
+    while(running) {
         SDL_Event event;
         while(SDL_PollEvent(&event)) {
-            OnEvent(&event);
+            onEvent(&event);
         }
 
-        OnLoop();
-        OnRender();
+        onLoop();
+        onRender();
     }
 
-    OnCleanup();
+    onCleanup();
 
     return 0;
 }
 
-void Tugsy::OnEvent(SDL_Event* event) {
+void Tugsy::onEvent(SDL_Event* event) {
 }
 
-void Tugsy::OnLoop() {
+void Tugsy::onLoop() {
 }
 
-void Tugsy::OnRender() {
+void Tugsy::onRender() {
 }
 
-void Tugsy::OnCleanup() {
+void Tugsy::onCleanup() {
     // Nothing to be done... the SDL destructor will take care of
     // the interface and we have no state to manage
 }
 
-int main(int argc, char* argv[]) {
-    SdlState sdlState = SdlState();
-    sdlState.loadView();
+void sigHandler(int param) {
+    running = false;
+}
 
+int main(int argc, char* argv[]) {
+    if (signal (SIGINT, sigHandler) > 0) {
+        cerr << "Failed to load the SIGINT handler" << std::endl;
+        return 1;
+    }
+
+    SdlState sdlState = SdlState();
     Tugsy app = Tugsy(sdlState);
-    return app.OnExecute();
+    sdlState.loadView();
+    return app.onExecute();
 }
