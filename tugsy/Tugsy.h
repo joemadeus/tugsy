@@ -6,13 +6,20 @@
 #include <signal.h>
 #include <SDL2/SDL.h>
 
-#include <sdl.h>
+#include "sdl.h"
+#include "PositionData.h"
 
 using namespace std;
 
+const std::string KNOWN_VIEWS = {
+    "pvd_harbor",
+    "pvd_to_bristol",
+    "pvd_to_gansett"
+};
+
 class Tugsy {
 public:
-    Tugsy(SdlState &state);
+    Tugsy(SdlState &state, PositionData &positions);
     int onExecute();
     bool onInit();
     void onEvent(SDL_Event* Event);
@@ -22,6 +29,9 @@ public:
 
 private:
     SdlState sdlState;
+    PositionData &positionData
+    View views[sizeof(KNOWN_VIEWS)];
+    int currentView = 0;
 };
 
 bool running = true;

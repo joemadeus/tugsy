@@ -9,28 +9,29 @@
 
 using namespace std;
 
-const int SCREEN_X = 25;
-const int SCREEN_Y = 100;
+const int SCREEN_X = 0;
+const int SCREEN_Y = 0;
 const int SCREEN_WIDTH  = 480;
 const int SCREEN_HEIGHT = 800;
+
+const char PATH_SEP = '/';
 
 class SdlState {
 public:
 	SdlState();
 	~SdlState();
-	bool loadView() const;
-	std::string getResourcePath();
+	bool drawNextView();
+	SDL_Texture* initTexture(const std::string &viewName, const std::string &resource);
 
 private:
-	int initContext();
-	int initResourcePath();
+	void initContext();
 
-	SDL_Window *window;
-	SDL_Renderer *renderer;
+	SDL_Window *window = NULL;
+	SDL_Renderer *renderer = NULL;
 	std::string baseRes;
 };
 
-void logSDLError(std::ostream &os, const std::string &msg);
+void sdlError(const std::string &msg);
 
 /*
  * Recurse through the list of arguments to clean up, cleaning up

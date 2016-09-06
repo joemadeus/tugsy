@@ -1,13 +1,7 @@
-#include <sdl.h>
+#include "sdl.h"
 
 SdlState::SdlState() {
-	if (initContext() > 0) {
-		throw exception();
-	}
-
-	if (initResourcePath() > 0) {
-		throw exception();
-	}
+	initContext();
 }
 
 SdlState::~SdlState() {
@@ -16,71 +10,72 @@ SdlState::~SdlState() {
 	SDL_Quit();
 }
 
-int SdlState::initContext() {
-	if (SDL_Init(SDL_INIT_VIDEO) != 0){
-		logSDLError(std::cout, "SDL_Init");
-		return 1;
+void SdlState::initContext() {
+	// SDL_GetBasePath will return NULL if something went wrong in retrieving the path
+	char *basePath = SDL_GetBasePath();
+	if ( ! basePath) {
+		throw exception(sdlError("Error getting resource path: "));
+
+	baseRes = basePath;
+	SDL_free(basePath);
+
+	// We replace the last bin/ with res/ to get the resource path
+	size_t pos = baseRes.rfind("bin");
+	baseRes = baseRes.substr(0, pos) + "res" + PATH_SEP;
+
+	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+		throw exception(sdlError("SDL_Init"));
+	}
+
+	if ((IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) != IMG_INIT_PNG) {
+		std::string const msg = sdlError("IMG_Init")
+		SDL_Quit();
+		throw exception(msg);
 	}
 
 	this->window = SDL_CreateWindow(
 		"tugsy-dev", SCREEN_X, SCREEN_Y, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-	if (this->window == nullptr){
-		logSDLError(std::cout, "CreateWindow");
+	if (this->window == nullptr) {
+		std::string const msg = sdlError("CreateWindow")
+		IMG_Quit();
 		SDL_Quit();
-		return 1;
+		throw exception(msg);
 	}
 
 	this->renderer = SDL_CreateRenderer(
 		this->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-	if (this->renderer == nullptr){
-		logSDLError(std::cout, "CreateRenderer");
+	if (this->renderer == nullptr) {
+		std::string const msg = sdlError("CreateRenderer")
 		cleanup(this->window);
+		IMG_Quit();
 		SDL_Quit();
-		return 1;
+		throw exception(msg);
 	}
-
-	if ((IMG_Init(IMG_INIT_PNG) & IMG_INIT_PNG) != IMG_INIT_PNG){
-		logSDLError(std::cout, "IMG_Init");
-		SDL_Quit();
-		return 1;
-	}
-
-	return 0;
 }
 
-int SdlState::initResourcePath() {
-    const char PATH_SEP = '/';
-
-	// SDL_GetBasePath will return NULL if something went wrong in retrieving the path
-	char *basePath = SDL_GetBasePath();
-	if (basePath){
-		baseRes = basePath;
-		SDL_free(basePath);
-		return 0;
-
-	} else {
-		std::cerr << "Error getting resource path: " << SDL_GetError() << std::endl;
-		return 1;
+SDL_Texture* SdlState::initTexture(const std::string &filename) {
+	SDL_Texture *texture = IMG_LoadTexture(this->renderer, filename.c_str());
+	if (texture == nullptr){
+		throw exception(sdlError("Couldn't load file " + filename + " to a texture."));
 	}
-
-	// We replace the last bin/ with res/ to get the the resource path
-	size_t pos = baseRes.rfind("bin");
-	baseRes = baseRes.substr(0, pos) + "res" + PATH_SEP;
+	return texture;
 }
 
-bool SdlState::loadView() const {
+bool SdlState::drawNextView() {
+	this->currentView =
+        (this->currentView >= sizeof(views) - 1)
+        ? 0
+        : this->currentView++;
+
+	// TODO: Draw to the renderer
+
 	return true;
 }
 
-std::string SdlState::getResourcePath() {
-	return baseRes;
+std::string SdlState::getResource(const std::string &viewName, const std::string &resource) {
+	return this->baseRes + PATH_SEP + viewName + PATH_SEP + resource;
 }
 
-/**
- * Log an SDL error with some error message to the output stream of our choice
- * @param os The output stream to write the message to
- * @param msg The error message to write, format will be msg error: SDL_GetError()
- */
-void logSDLError(std::ostream &os, const std::string &msg){
-	os << msg << " error: " << SDL_GetError() << std::endl;
+std::string sdlError(const std::string &msg){
+	return msg + " error: " + SDL_GetError();
 }
