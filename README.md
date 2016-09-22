@@ -1,5 +1,5 @@
 # tugsy
-A surprise project for my fiancé, who likes to see watch the tugboats in Providence Harbor.
+A surprise project for my fiancé, who likes to watch the tugboats in Providence Harbor.
 
 This is the app and GIS data for a single-use computer that gathers vessel NEMA data from a radio in our house and from online sources, then displays that data on a map. (It's also my first foray into a full C++ app, as well as my first app with any sort of extensive graphics code.) SDL2 is used to render to the screen and to handle touch events. It uses existing code that tunes/controls an SDR and transforms the data into position info.
 
