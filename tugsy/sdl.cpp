@@ -61,15 +61,16 @@ SDL_Texture* SdlState::initTexture(const std::string &filename) {
 	return texture;
 }
 
-bool SdlState::drawNextView() {
-	this->currentView =
-        (this->currentView >= sizeof(views) - 1)
-        ? 0
-        : this->currentView++;
+void SdlState::paint(SDL_Texture* texture,
+	                 const SDL_Rect* srcrect,
+	                 const SDL_Rect* dstrect) {
+	if (SDL_RenderCopy(this->renderer, texture, srcrect, dstrect) != 0) {
+		// TODO: Handle rendering errors?
+	}
+}
 
-	// TODO: Draw to the renderer
-
-	return true;
+void SdlState::flip() {
+	SDL_RenderPresent(this->renderer);
 }
 
 std::string SdlState::getResource(const std::string &viewName, const std::string &resource) {

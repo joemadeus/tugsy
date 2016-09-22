@@ -3,16 +3,19 @@
 Tugsy::Tugsy(SdlState &state, PositionData &positions) {
     this->sdlState = state;
     this->positionData = positions;
+
+    for (std::string v = KNOWN_VIEWS.cbegin(); v != KNOWN_VIEWS.cend(); v++) {
+        this->views[i] = View(*v, state);
+    }
+
+    this->currentViewIndex = 0;
 }
 
-int Tugsy::onExecute(){
-
-    // We never explicitly exit, instead relying on our ability to
-    // handle a signal appropriately
+int Tugsy::onExecute() {
     while(running) {
-        SDL_Event event;
-        while(SDL_PollEvent(&event)) {
-            onEvent(&event);
+        SDL_Event* event;
+        while(SDL_PollEvent(event)) {
+            onEvent(event);
         }
 
         onLoop();
@@ -26,16 +29,22 @@ int Tugsy::onExecute(){
 
 void Tugsy::onEvent(SDL_Event* event) {
     // TODO: On touch, show the next view
+    this->currentViewIndex =
+        (this->currentViewIndex >= sizeof(views) - 1)
+        ? 0
+        : this->currentViewIndex++;
+
+    this->currentView());
 }
 
 void Tugsy::onLoop() {
-    this->positionData.updateVessels();
-    this->positionData.expireVessels();
+    // TODO: Read from the radio and other sources and write the data
+    // to the PositionData instance
 }
 
 void Tugsy::onRender() {
-    vessel_info_t expiredVessels = this->positionData.getExpiredPositions(this->lastUpdate);
-    vessel_info_t updatedVessels = this->positionData.getUpdatedPositions(this->lastUpdate);
+    this->currentView().renderPositions(this->positionData.getLatestPositions());
+    this->sdlState.flip();
 }
 
 void Tugsy::onCleanup() {

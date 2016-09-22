@@ -20,8 +20,18 @@ class SdlState {
 public:
 	SdlState();
 	~SdlState();
-	bool drawNextView();
-	SDL_Texture* initTexture(const std::string &viewName, const std::string &resource);
+
+	bool addTex(SDL_Texture* texture);
+
+	void paint(SDL_Texture* texture,
+               const SDL_Rect* srcrect,
+               const SDL_Rect* dstrect);
+	/**
+	 * Display the contents of the back buffer
+	 */
+	void flip();
+
+	SDL_Texture* initTextures(const std::string viewName, const std::string resource);
 
 private:
 	void initContext();
