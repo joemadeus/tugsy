@@ -12,7 +12,8 @@
 
 using namespace std;
 
-const std::array<std::string> KNOWN_VIEWS = {
+#define NUMBER_OF_KNOWN_VIEWS 3
+const std::array<std::string, NUMBER_OF_KNOWN_VIEWS> KNOWN_VIEWS = {
     "pvd_harbor",
     "pvd_to_bristol",
     "pvd_to_gansett"
@@ -22,8 +23,8 @@ const std::array<std::string> KNOWN_VIEWS = {
 const int MARKER_HEIGHT = 8;
 const int MARKER_WIDTH = 8;
 
-const char* BACKGROUND_FILE_NAME = 'view.png';
-const char* MARKER_SHEET_FILE_NAME = 'markers.png';
+const std::string BACKGROUND_FILE_NAME = "view.png";
+const std::string MARKER_SHEET_FILE_NAME = "markers.png";
 
 class View {
 
@@ -34,13 +35,16 @@ class View {
      */
 
 public:
-    View(std::string &name, SdlContext &context);
+    View(std::string &name, SdlState &state);
     ~View();
-    void renderPositions(std::set<position_t> latestPositions);
+    void rebuild();
+    void renderPositions(std::set<vessel_info_t> latestPositions);
+    vessel_info_t whatsHere(const int x, const int y);
 
 private:
-    SDL_Rect getSpriteRect(int dataOrigin const, int vesselType const);
-    SDL_Rect getBackgroundRect(latitude lat const, longitude lon const);
+    void renderPosition(const vessel_info_t &position);
+    SDL_Rect* getSpriteRect(const int dataOrigin, const int vesselType);
+    SDL_Rect* getBackgroundRect(const latitude lat, const longitude lon);
 
     std::string viewName;
 
@@ -49,11 +53,11 @@ private:
     latitude lrLat;
     longitude lrLon;
 
-    SdlContext &sdlContext;
+    SdlState sdlState;
     SDL_Texture* background;
     SDL_Texture* marker_sheet;
 
-    std::set<position_t> currentlyRenderedPositions;
+    std::set<vessel_info_t> currentlyRenderedPositions;
 };
 
 #endif

@@ -4,16 +4,15 @@ Tugsy::Tugsy(SdlState &state, PositionData &positions) {
     this->sdlState = state;
     this->positionData = positions;
 
-    for (std::string v = KNOWN_VIEWS.cbegin(); v != KNOWN_VIEWS.cend(); v++) {
-        this->views[i] = View(*v, state);
+    unsigned int i = 0;
+    for (std::string viewName : KNOWN_VIEWS) {
+        this->views[i++] = View(viewName, state);
     }
-
-    this->currentViewIndex = 0;
 }
 
 int Tugsy::onExecute() {
     while(running) {
-        SDL_Event* event;
+        SDL_Event* event = NULL;
         while(SDL_PollEvent(event)) {
             onEvent(event);
         }
@@ -28,13 +27,34 @@ int Tugsy::onExecute() {
 }
 
 void Tugsy::onEvent(SDL_Event* event) {
-    // TODO: On touch, show the next view
-    this->currentViewIndex =
-        (this->currentViewIndex >= sizeof(views) - 1)
-        ? 0
-        : this->currentViewIndex++;
+    switch (event->type) {
+        case SDL_KEYDOWN:
+            // Any keypress will switch to the next view
+            // in the cycle
+            this->currentViewIndex =
+                (this->currentViewIndex >= this->views.size() - 1)
+                ? 0
+                : this->currentViewIndex + 1;
 
-    this->currentView());
+            this->currentView().rebuild();
+            break;
+
+        case SDL_FINGERDOWN:
+            // TODO: On touch to the touchscreen, show vessel info
+            // see SDL_TouchFingerEvent
+            // vessel_info_t vessel =
+            //     this->currentView().whatsHere(
+            //         (int) round(x * SCREEN_WIDTH),
+            //         (int) round(y * SCREEN_HEIGHT));
+            // if (vessel != NULL) {
+            // }
+
+            break;
+
+        default:
+            // do nothing
+            break;
+    }
 }
 
 void Tugsy::onLoop() {
@@ -52,6 +72,10 @@ void Tugsy::onCleanup() {
     // the interface and we have no other state to manage
 }
 
+View& Tugsy::currentView() {
+    return this->views[this->currentViewIndex];
+}
+
 void sigHandler(int param) {
     running = false;
 }
@@ -63,7 +87,8 @@ int main(int argc, char* argv[]) {
     }
 
     SdlState sdlState = SdlState();
-    Tugsy app = Tugsy(sdlState);
+    PositionData positionData = PositionData();
+    Tugsy app = Tugsy(sdlState, positionData);
 
     return app.onExecute();
 }

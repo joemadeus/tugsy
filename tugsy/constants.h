@@ -1,3 +1,6 @@
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
+
 typedef int longitude;
 typedef int latitude;
 
@@ -12,3 +15,5 @@ const int TRAIL = 2;
 const int RECREATIONAL_VESSEL = 0;
 const int PASSENGER_VESSEL = 1;
 const int COMMERCIAL_VESSEL = 2;
+
+#endif

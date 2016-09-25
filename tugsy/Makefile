@@ -6,7 +6,7 @@ CXXFLAGS=-std=c++11 -Wall $(SDL_FLAGS)
 INCLUDES=-I. -I./$(RESOURCES)
 LIBS=-lSDL2_image
 SDL_FLAGS=`sdl2-config --libs --cflags`
-SOURCES=Tugsy.cpp sdl.cpp
+SOURCES=Tugsy.cpp sdl.cpp View.cpp PositionData.cpp
 
 all: $(SOURCES) $(EXECUTABLE)
 

@@ -1,10 +1,11 @@
 #ifndef TUGSY_H
 #define TUGSY_H
 
-#include <array>
+#include <vector>
 #include <stdio.h>
 #include <thread>
 #include <signal.h>
+#include <SDL2/SDL_events.h>
 
 #include "sdl.h"
 #include "PositionData.h"
@@ -13,11 +14,13 @@
 using namespace std;
 
 class Tugsy {
-private:
+public:
     Tugsy(SdlState &state, PositionData &positions);
     int onExecute();
-    bool onInit();
+
+private:
     void onEvent(SDL_Event* Event);
+    bool onInit();
     void onLoop();
     void onRender();
     void onCleanup();
@@ -25,9 +28,9 @@ private:
     View& currentView();
 
     SdlState sdlState;
-    PositionData &positionData;
-    std::array<View> views;
-    int currentViewIndex = 0;
+    PositionData positionData;
+    std::vector<View> views;
+    unsigned int currentViewIndex = 0;
     long lastUpdateMillis = 0;
 };
 

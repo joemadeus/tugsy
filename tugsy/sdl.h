@@ -31,10 +31,11 @@ public:
 	 */
 	void flip();
 
-	SDL_Texture* initTextures(const std::string viewName, const std::string resource);
+	SDL_Texture* initTexture(const std::string &viewName, const std::string &resource);
 
 private:
 	void initContext();
+	std::string getResource(const std::string &viewName, const std::string &resource);
 
 	SDL_Window *window = NULL;
 	SDL_Renderer *renderer = NULL;

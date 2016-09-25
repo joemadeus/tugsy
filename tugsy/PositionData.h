@@ -1,21 +1,25 @@
 #ifndef POSITIONDATA_H
 #define POSITIONDATA_H
 
+#include <set>
+#include <string>
 #include "constants.h"
 
 using namespace std;
 
 struct vessel_info_t {
-    latitude lat;
-    longitude lon;
-    int heading;
-    int vesselType;
-    int dataOrigin;
-    long timestampMs;
+    const latitude lat;
+    const longitude lon;
+    const unsigned int heading;
+    const unsigned int vesselType;
+    const unsigned int dataOrigin;
+    const unsigned long timestampMs;
     std::string name;
     std::string designation;
-    bool isLatestPosition;
-}
+    const bool isLatestPosition;
+};
+
+const vessel_info_t NULL_VESSEL = { 0, 0, 0, 0, 0, 0, "", "", false };
 
 class PositionData {
 
@@ -29,16 +33,10 @@ public:
     void expireVessels();
 
     /**
-     * Returns the latest positions of all vessels, sorted
-     * first by timestampMs then by vessel designation.
+     * Returns the latest positions of all vessels, sorted by lat, then by lon,
+     * then by timestampMs.
      */
-    std::set<vessel_info_t> getLatestPositions(unsigned long const sinceMillis);
-
-    /**
-     * Returns the historical positions of all vessels, sorted
-     * first by timestampMs then by vessel designation.
-     */
-    std::set<vessel_info_t> getPastPositions(unsigned long const sinceMillis);
-}
+    std::set<vessel_info_t> getLatestPositions();
+};
 
 #endif
