@@ -1,0 +1,9 @@
+package: github.com/joemadeus/go-tugsy
+import:
+- package: github.com/veandco/go-sdl2
+  version: ^0.1.0
+  subpackages:
+  - sdl
+  - mix
+  - img
+  - ttf
