@@ -16,7 +16,7 @@ const (
 )
 
 func run() int {
-	fmt.Fprint(os.Stdout, "Starting Tugsy\n")
+	fmt.Fprintf(os.Stdout, "Starting Tugsy\n")
 	window, err := sdl.CreateWindow(
 		screen_title, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, screen_width, screen_height, sdl.WINDOW_SHOWN)
 	if err != nil {
@@ -25,7 +25,7 @@ func run() int {
 	}
 	defer window.Destroy()
 
-	fmt.Fprint(os.Stdout, "Creating renderer\n")
+	fmt.Fprintf(os.Stdout, "Creating renderer\n")
 	renderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create renderer: %s\n", err)
@@ -33,7 +33,7 @@ func run() int {
 	}
 	defer renderer.Destroy()
 
-	fmt.Fprint(os.Stdout, "Initializing image.PNG\n")
+	fmt.Fprintf(os.Stdout, "Initializing image.PNG\n")
 	png_init := image.Init(image.INIT_PNG)
 	if png_init != image.INIT_PNG {
 		fmt.Fprintf(os.Stderr, "Failed to load INIT_PNG: %s\n", png_init)
@@ -41,13 +41,18 @@ func run() int {
 	}
 	defer image.Quit()
 
-	fmt.Fprint(os.Stdout, "Initializing resources\n")
+	fmt.Fprintf(os.Stdout, "Initializing resources\n")
 	err = InitResources(renderer)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not load resources: %s\n", err)
 		return 1
 	}
 	defer TeardownResources()
+
+	view := currentView()
+	err = view.redisplay(renderer)
+	if err != nil { fmt.Fprint(os.Stderr, "Could not initialize the display with the first view: %s\n", err) }
+	renderer.Present()
 
 	running := true
 	for running {
@@ -61,6 +66,8 @@ func run() int {
 					view := nextView()
 					err := view.redisplay(renderer)
 					if err != nil { fmt.Fprint(os.Stderr, "Could not rebuild the display for %s: %s\n", view.ViewName, err) }
+
+					renderer.Present()
 				}
 			}
 		}
