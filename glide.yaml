@@ -7,3 +7,4 @@ import:
   - mix
   - img
   - ttf
+- package: github.com/andmarios/aislib
