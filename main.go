@@ -2,60 +2,67 @@ package main
 
 import (
 	"os"
+
 	"github.com/veandco/go-sdl2/sdl"
 	image "github.com/veandco/go-sdl2/sdl_image"
-	"fmt"
 )
 
 const (
-	screen_x      int = 0
-	screen_y      int = 0
-	screen_width  int = 480
-	screen_height int = 600
+	screen_width  int    = 480
+	screen_height int    = 600
 	screen_title  string = "Tugsy"
 )
 
+var updateEvents chan bool = make(chan bool) // Position, etc
+
 func run() int {
-	fmt.Fprintf(os.Stdout, "Starting Tugsy\n")
+	logger.Info("Starting Tugsy")
 	window, err := sdl.CreateWindow(
 		screen_title, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, screen_width, screen_height, sdl.WINDOW_SHOWN)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create window: %s\n", err)
+		logger.Fatal("Failed to create window", "err", err)
 		return 1
 	}
 	defer window.Destroy()
 
-	fmt.Fprintf(os.Stdout, "Creating renderer\n")
+	logger.Info("Creating renderer")
 	renderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create renderer: %s\n", err)
+		logger.Fatal("Failed to create renderer", "err", err)
 		return 1
 	}
 	defer renderer.Destroy()
 
-	fmt.Fprintf(os.Stdout, "Initializing image.PNG\n")
+	logger.Info("Initializing image.PNG")
 	png_init := image.Init(image.INIT_PNG)
 	if png_init != image.INIT_PNG {
-		fmt.Fprintf(os.Stderr, "Failed to load INIT_PNG: %s\n", png_init)
+		logger.Fatal("Failed to load INIT_PNG", "png_init", png_init)
 		return 1
 	}
 	defer image.Quit()
 
-	fmt.Fprintf(os.Stdout, "Initializing resources\n")
+	logger.Info("Initializing resources")
 	err = InitResources(renderer)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not load resources: %s\n", err)
+		logger.Fatal("Could not load resources", "err", err)
 		return 1
 	}
 	defer TeardownResources()
 
+	logger.Info("Initializing the first view")
 	view := currentView()
-	err = view.redisplay(renderer)
-	if err != nil { fmt.Fprint(os.Stderr, "Could not initialize the display with the first view: %s\n", err) }
+	err = view.Redisplay(renderer)
+	if err != nil {
+		logger.Fatal("Could not initialize the display with the first view", "err", err)
+		return 1
+	}
 	renderer.Present()
 
+	logger.Info("Starting the UI loop")
+	returnCode := 0
 	running := true
 	for running {
+		// PollEvent has to be run in the video init's thread
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch t := event.(type) {
 			case *sdl.QuitEvent:
@@ -64,16 +71,25 @@ func run() int {
 				switch t.Keysym.Sym {
 				case sdl.K_SPACE:
 					view := nextView()
-					err := view.redisplay(renderer)
-					if err != nil { fmt.Fprint(os.Stderr, "Could not rebuild the display for %s: %s\n", view.ViewName, err) }
-
-					renderer.Present()
+					err := view.Redisplay(renderer)
+					if err != nil {
+						logger.Fatal("Could not rebuild the display", "viewName", view.ViewName, "err", err)
+						returnCode = 1
+						running = false
+					} else {
+						renderer.Present()
+					}
 				}
 			}
+
 		}
 	}
 
-	return 0
+	return returnCode
+}
+
+func masterBlaster() {
+
 }
 
 func main() {
