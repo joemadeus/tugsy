@@ -8,3 +8,4 @@ import:
   - img
   - ttf
 - package: github.com/andmarios/aislib
+- package: github.com/mgutz/logxi
