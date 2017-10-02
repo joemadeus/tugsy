@@ -36,9 +36,7 @@ func nextView() *View {
 	return Views[index]
 }
 
-/*
-   Returns a path to a resource in the given view
-*/
+// Returns a path to a resource in the given view
 func getResourcePath(viewName string, pngResource string) string {
 	return resDir + "/" + viewName + pngResource
 }
@@ -62,8 +60,8 @@ func InitResources(renderer *sdl.Renderer) error {
 			Tex:    baseTexture,
 			LRGeo:  RealWorldPosition{0.0, 0.0},
 			ULGeo:  RealWorldPosition{0.0, 0.0},
-			width:  float64(screen_width),
-			height: float64(screen_height),
+			width:  float64(screenWidth),
+			height: float64(screenHeight),
 		}
 		sprites := &SpriteSheet{spriteTexture, spriteSize}
 		Views[index] = &View{baseMap, ViewList[index], sprites}
@@ -88,17 +86,15 @@ type View struct {
 	Sprites  *SpriteSheet
 }
 
-/*
-   Clears the renderer and redisplays the base map.
-   TODO: Redisplay the current tracks as well
-*/
-func (v *View) Redisplay(renderer *sdl.Renderer) error {
+// Clears the renderer and redisplays the base map.
+// TODO: Redisplay the current tracks as well
+func (view *View) Redisplay(renderer *sdl.Renderer) error {
 	err := renderer.Clear()
 	if err != nil {
 		return err
 	}
 
-	err = renderer.Copy(v.BaseMap.Tex, nil, nil)
+	err = renderer.Copy(view.BaseMap.Tex, nil, nil)
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-package: github.com/joemadeus/go-tugsy
+package: github.com/joemadeus/tugsy/tugsy
 import:
 - package: github.com/veandco/go-sdl2
   version: ^0.1.0

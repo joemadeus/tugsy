@@ -1,0 +1,4 @@
+routers:
+  "local":
+    host: "nema"
+    port: 29777
