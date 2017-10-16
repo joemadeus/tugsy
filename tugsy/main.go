@@ -17,12 +17,8 @@ import (
 // * Master loop
 // * UI loop
 
-const (
-	screenWidth  int    = 480
-	screenHeight int    = 600
-	screenTitle  string = "Tugsy"
-)
-
+var TheDisplay *View
+var TheData *AISData
 var running = true
 
 func run() int {
@@ -36,10 +32,11 @@ func run() int {
 	}
 
 	logger.Info("Loading the AIS routers")
-	decoded := make(chan SourcedMessage)
+	decoded := make(chan aislib.Message)
 	failed := make(chan aislib.FailedSentence)
 	routers, err := RemoteAISServersFromConfig(decoded, failed, config)
 	if err != nil {
+		// TODO: This potentially leaves routers in a dirty state
 		logger.Fatal("Could not initialize the routers", "err", err)
 		running = false
 		return 1
@@ -91,9 +88,9 @@ func run() int {
 	}
 	defer TeardownResources()
 
-	logger.Info("Initializing the first view")
-	view := currentView()
-	err = view.Redisplay(renderer)
+	logger.Info("Initializing the display")
+	TheDisplay = currentView()
+	err = TheDisplay.Redisplay(renderer)
 	if err != nil {
 		logger.Fatal("Could not initialize the display with the first view", "err", err)
 		running = false
@@ -101,10 +98,16 @@ func run() int {
 	}
 	renderer.Present()
 
-	returnCode := 0
+	TheData = NewAISData()
+	logger.Info("Starting the position culling loop")
+	go TheData.PrunePositions()
 
-	logger.Info("Starting the AIS update loop")
-	go masterBlaster(decoded, failed)
+	logger.Info("Starting the AIS update loops")
+	for _, r := range routers {
+		go r.DecodePositions(decoded, failed)
+	}
+
+	returnCode := 0
 
 	logger.Info("Starting the UI loop")
 	for running {

@@ -12,6 +12,10 @@ const (
 	infoFile    string = "/info"
 
 	spriteSize = 8 // pixels square
+
+	screenWidth  int    = 480
+	screenHeight int    = 600
+	screenTitle  string = "Tugsy"
 )
 
 var ViewList = [3]string{
@@ -80,6 +84,24 @@ func TeardownResources() {
 	}
 }
 
+type position struct {
+	X float64
+	Y float64
+}
+
+// RealWorldPosition is a degree decimal formatted latitude/longitude
+type RealWorldPosition position
+
+// BaseMapPosition is a pixel coordinate on a base map
+type BaseMapPosition position
+
+type BaseMap struct {
+	Tex           *sdl.Texture
+	ULGeo         RealWorldPosition
+	LRGeo         RealWorldPosition
+	width, height float64
+}
+
 type View struct {
 	*BaseMap
 	ViewName string
@@ -109,24 +131,6 @@ func (view *View) getBaseMapPosition(position RealWorldPosition) BaseMapPosition
 		(position.X - view.LRGeo.X) / (view.ULGeo.X - view.LRGeo.X) * view.width,
 		(position.Y - view.LRGeo.Y) / (view.ULGeo.Y - view.LRGeo.Y) * view.height,
 	}
-}
-
-type position struct {
-	X float64
-	Y float64
-}
-
-// RealWorldPosition is a degree decimal formatted latitude/longitude
-type RealWorldPosition position
-
-// BaseMapPosition is a pixel coordinate on a base map
-type BaseMapPosition position
-
-type BaseMap struct {
-	Tex           *sdl.Texture
-	ULGeo         RealWorldPosition
-	LRGeo         RealWorldPosition
-	width, height float64
 }
 
 type SpriteSheet struct {

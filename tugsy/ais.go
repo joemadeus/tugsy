@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"net"
 	"time"
 
@@ -20,14 +19,34 @@ var (
 	NoRouterConfigFound = errors.New("Could not find router configs")
 )
 
-type SourcedMessage struct {
-	*aislib.Message
+type SourcedClassAPositionReport struct {
+	*aislib.ClassAPositionReport
+	sourceName string
+}
+
+type SourcedClassBPositionReport struct {
+	*aislib.ClassBPositionReport
+	sourceName string
+}
+
+type SourcedBaseStationReport struct {
+	*aislib.BaseStationReport
+	sourceName string
+}
+
+type SourcedBinaryBroadcast struct {
+	*aislib.BinaryBroadcast
+	sourceName string
+}
+
+type SourcedStaticVoyageData struct {
+	*aislib.StaticVoyageData
 	sourceName string
 }
 
 type RemoteAISServer struct {
 	inStrings chan string
-	Decoded   chan SourcedMessage
+	Decoded   chan aislib.Message
 	Failed    chan aislib.FailedSentence
 	conn      net.Conn
 
@@ -37,15 +56,15 @@ type RemoteAISServer struct {
 	port     int
 }
 
-func RemoteAISServersFromConfig(decoded chan SourcedMessage, failed chan aislib.FailedSentence, config *Config) ([]*RemoteAISServer, error) {
+func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.FailedSentence, config *Config) ([]*RemoteAISServer, error) {
 	if config.IsSet("routers") == false {
 		return nil, NoRouterConfigFound
 	}
 
-	routerConfigs := config.GetStringMap("routers")
-	routers := make(map[string]*RemoteAISServer)
-	for sourceName, routerConfig := range routerConfigs {
-		routers[sourceName] = &RemoteAISServer{
+	var routers []*RemoteAISServer
+	routerConfigs := config.Get("routers")
+	for routerConfig, i := range routerConfigs {
+		routers[i] = &RemoteAISServer{
 			inStrings: make(chan string),
 			Decoded:   decoded,
 			Failed:    failed,
@@ -57,21 +76,12 @@ func RemoteAISServersFromConfig(decoded chan SourcedMessage, failed chan aislib.
 		}
 	}
 
-	return nil, nil
+	return routers, nil
 }
 
 func (router *RemoteAISServer) start() {
 	decoded := make(chan aislib.Message)
 	go aislib.Router(router.inStrings, decoded, router.Failed)
-
-	// "decorate" incoming, generic messages with this router's special sauce
-	go func() {
-		var m aislib.Message
-		for {
-			m = <-decoded
-			router.Decoded <- SourcedMessage{&m, router.sourceName}
-		}
-	}()
 
 	go func() {
 		timeoutSleep := time.Duration(connRetryTimeoutSecs) * time.Second
@@ -109,7 +119,8 @@ func (router *RemoteAISServer) stop() error {
 	return nil
 }
 
-func masterBlaster(decoded chan SourcedMessage, failed chan aislib.FailedSentence) {
+func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, failed chan aislib.FailedSentence) {
+	logger.Info("Starting AIS loop for " + router.sourceName)
 	for {
 		select {
 		case message := <-decoded:
@@ -118,32 +129,47 @@ func masterBlaster(decoded chan SourcedMessage, failed chan aislib.FailedSentenc
 				t, err := aislib.DecodeClassAPositionReport(message.Payload)
 				if err != nil {
 					logger.Error("Decoding class A report", "err", err)
+					break
 				}
-				fmt.Println(t)
+				report := &SourcedClassAPositionReport{&t, router.sourceName}
+				TheData.AddAPosition(report)
+
 			case 4:
 				t, err := aislib.DecodeBaseStationReport(message.Payload)
 				if err != nil {
 					logger.Error("Decoding base station report", "err", err)
+					break
 				}
-				fmt.Println(t)
+				report := &SourcedBaseStationReport{&t, router.sourceName}
+				TheData.UpdateBaseStationReport(report)
+
 			case 5:
 				t, err := aislib.DecodeStaticVoyageData(message.Payload)
 				if err != nil {
 					logger.Error("Decoding voyage data", "err", err)
+					break
 				}
-				fmt.Println(t)
+				report := &SourcedStaticVoyageData{&t, router.sourceName}
+				TheData.UpdateStaticVoyageData(report)
+
 			case 8:
 				t, err := aislib.DecodeBinaryBroadcast(message.Payload)
 				if err != nil {
 					logger.Error("Decoding binary broadcast", "err", err)
+					break
 				}
-				fmt.Println(t)
+				report := &SourcedBinaryBroadcast{&t, router.sourceName}
+				TheData.UpdateBinaryBroadcast(report)
+
 			case 18:
 				t, err := aislib.DecodeClassBPositionReport(message.Payload)
 				if err != nil {
 					logger.Error("Decoding class B report", "err", err)
+					break
 				}
-				fmt.Println(t)
+				report := &SourcedClassBPositionReport{&t, router.sourceName}
+				TheData.AddBPosition(report)
+
 			default:
 				logger.Debug("Unsupported message type %2d", message.Type)
 			}
