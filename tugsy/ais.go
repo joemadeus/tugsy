@@ -19,29 +19,47 @@ var (
 	NoRouterConfigFound = errors.New("Could not find router configs")
 )
 
+type SourcedReport interface {
+	GetSource() string
+	GetReceivedTime() time.Time
+}
+
+type SourceAndTime struct {
+	sourceName   string
+	receivedTime time.Time
+}
+
+func (st *SourceAndTime) GetSource() string {
+	return st.sourceName
+}
+
+func (st *SourceAndTime) GetReceivedTime() time.Time {
+	return st.receivedTime
+}
+
 type SourcedClassAPositionReport struct {
 	*aislib.ClassAPositionReport
-	sourceName string
+	SourceAndTime
 }
 
 type SourcedClassBPositionReport struct {
 	*aislib.ClassBPositionReport
-	sourceName string
+	SourceAndTime
 }
 
 type SourcedBaseStationReport struct {
 	*aislib.BaseStationReport
-	sourceName string
+	SourceAndTime
 }
 
 type SourcedBinaryBroadcast struct {
 	*aislib.BinaryBroadcast
-	sourceName string
+	SourceAndTime
 }
 
 type SourcedStaticVoyageData struct {
 	*aislib.StaticVoyageData
-	sourceName string
+	SourceAndTime
 }
 
 type RemoteAISServer struct {
@@ -85,7 +103,7 @@ func (router *RemoteAISServer) start() {
 
 	go func() {
 		timeoutSleep := time.Duration(connRetryTimeoutSecs) * time.Second
-		for running {
+		for MachineAndProcessState.running {
 			if router.conn != nil {
 				logger.Error("Connection broken", "host", router.hostname, "retrying in", connRetryTimeoutSecs)
 				time.Sleep(timeoutSleep)
@@ -106,12 +124,12 @@ func (router *RemoteAISServer) start() {
 
 			connbuf := bufio.NewScanner(router.conn)
 			connbuf.Split(bufio.ScanLines)
-			for connbuf.Scan() && running {
+			for connbuf.Scan() && MachineAndProcessState.running {
 				router.inStrings <- connbuf.Text()
 				router.conn.SetReadDeadline(time.Now().Add(readDeadlineSecs * time.Second))
 			}
 		}
-		logger.Info("Router reconnect loop exiting", "running", running)
+		logger.Info("Router reconnect loop exiting", "running", MachineAndProcessState.running)
 	}()
 }
 
@@ -131,8 +149,8 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding class A report", "err", err)
 					break
 				}
-				report := &SourcedClassAPositionReport{&t, router.sourceName}
-				TheData.AddAPosition(report)
+				report := &SourcedClassAPositionReport{&t, SourceAndTime{router.sourceName, time.Now()}}
+				MachineAndProcessState.TheData.AddAPosition(report)
 
 			case 4:
 				t, err := aislib.DecodeBaseStationReport(message.Payload)
@@ -140,8 +158,8 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding base station report", "err", err)
 					break
 				}
-				report := &SourcedBaseStationReport{&t, router.sourceName}
-				TheData.UpdateBaseStationReport(report)
+				report := &SourcedBaseStationReport{&t, SourceAndTime{router.sourceName, time.Now()}}
+				MachineAndProcessState.TheData.UpdateBaseStationReport(report)
 
 			case 5:
 				t, err := aislib.DecodeStaticVoyageData(message.Payload)
@@ -149,8 +167,8 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding voyage data", "err", err)
 					break
 				}
-				report := &SourcedStaticVoyageData{&t, router.sourceName}
-				TheData.UpdateStaticVoyageData(report)
+				report := &SourcedStaticVoyageData{&t, SourceAndTime{router.sourceName, time.Now()}}
+				MachineAndProcessState.TheData.UpdateStaticVoyageData(report)
 
 			case 8:
 				t, err := aislib.DecodeBinaryBroadcast(message.Payload)
@@ -158,8 +176,8 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding binary broadcast", "err", err)
 					break
 				}
-				report := &SourcedBinaryBroadcast{&t, router.sourceName}
-				TheData.UpdateBinaryBroadcast(report)
+				report := &SourcedBinaryBroadcast{&t, SourceAndTime{router.sourceName, time.Now()}}
+				MachineAndProcessState.TheData.UpdateBinaryBroadcast(report)
 
 			case 18:
 				t, err := aislib.DecodeClassBPositionReport(message.Payload)
@@ -167,8 +185,8 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding class B report", "err", err)
 					break
 				}
-				report := &SourcedClassBPositionReport{&t, router.sourceName}
-				TheData.AddBPosition(report)
+				report := &SourcedClassBPositionReport{&t, SourceAndTime{router.sourceName, time.Now()}}
+				MachineAndProcessState.TheData.AddBPosition(report)
 
 			default:
 				logger.Debug("Unsupported message type %2d", message.Type)
