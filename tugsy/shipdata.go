@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"sync"
+
+	"github.com/andmarios/aislib"
 )
 
 const (
@@ -73,15 +75,17 @@ func (history *ShipHistory) prune(reports []SourcedReport) []SourcedReport {
 }
 
 type AISData struct {
-	mmsiPositions    map[uint32]ShipHistory
+	mmsiHistories    map[uint32]ShipHistory
 	mmsiBasestations map[uint32]SourcedBaseStationReport
 	mmsiBinaryData   map[uint32]SourcedBinaryBroadcast
+
+	dirty bool // TODO: remove when we only update dirtied positions
 	*sync.Mutex
 }
 
 func NewAISData() *AISData {
 	return &AISData{
-		mmsiPositions:    make(map[uint32]ShipHistory),
+		mmsiHistories:    make(map[uint32]ShipHistory),
 		mmsiBasestations: make(map[uint32]SourcedBaseStationReport),
 		mmsiBinaryData:   make(map[uint32]SourcedBinaryBroadcast),
 	}
@@ -92,6 +96,7 @@ func (aisData *AISData) AddAPosition(report *SourcedClassAPositionReport) {
 	history.Lock()
 	defer history.Unlock()
 	history.addAndPruneAPosition(report)
+	aisData.dirty = true // TODO: remove when we only update dirtied positions
 }
 
 func (aisData *AISData) AddBPosition(report *SourcedClassBPositionReport) {
@@ -99,15 +104,16 @@ func (aisData *AISData) AddBPosition(report *SourcedClassBPositionReport) {
 	history.Lock()
 	defer history.Unlock()
 	history.addAndPruneBPosition(report)
+	aisData.dirty = true // TODO: remove when we only update dirtied positions
 }
 
 func (aisData *AISData) getOrCreateShipHistory(mmsi uint32) *ShipHistory {
 	aisData.Lock()
 	defer aisData.Unlock()
-	history, ok := aisData.mmsiPositions[mmsi]
+	history, ok := aisData.mmsiHistories[mmsi]
 	if ok == false {
 		history = NewShipHistory()
-		aisData.mmsiPositions[mmsi] = history
+		aisData.mmsiHistories[mmsi] = history
 	}
 
 	return &history
@@ -116,7 +122,7 @@ func (aisData *AISData) getOrCreateShipHistory(mmsi uint32) *ShipHistory {
 func (aisData *AISData) UpdateStaticVoyageData(data *SourcedStaticVoyageData) {
 	aisData.Lock()
 	defer aisData.Unlock()
-	history := aisData.mmsiPositions[data.MMSI]
+	history := aisData.mmsiHistories[data.MMSI]
 	history.voyagedata = data
 }
 
@@ -145,17 +151,8 @@ func (aisData *AISData) PrunePositions() {
 			// doing so means potentially examining only a subset of all the shipdata, but
 			// that's alright: this isn't toooo important a process & we'll get to the ones
 			// we miss next time
-			aisData.Lock()
-			mmsis := make([]uint32, len(aisData.mmsiPositions))
-			i := 0
-			for mmsi := range aisData.mmsiPositions {
-				mmsis[i] = mmsi
-				i++
-			}
-			aisData.Unlock()
-
-			for _, mmsi := range mmsis {
-				history, ok := aisData.mmsiPositions[mmsi]
+			for _, mmsi := range aisData.GetHistoryMMSIs() {
+				history, ok := aisData.mmsiHistories[mmsi]
 				if ok == false {
 					logger.Debug("An MMSI was removed before we got could prune it", "MMSI", mmsi)
 					continue
@@ -164,20 +161,78 @@ func (aisData *AISData) PrunePositions() {
 				history.Lock()
 				history.aPositions = history.prune(history.aPositions)
 				history.bPositions = history.prune(history.bPositions)
+				if history.dirty {
+					aisData.dirty = true // TODO: remove when we only update dirtied positions
+				}
 				history.Unlock()
 			}
 		}
 	}
 }
 
-// Returns the ShipHistory associated with the given MMSI, or nil if it doesn't exist
+// Returns a slice of all known MMSI values
+func (aisData *AISData) GetHistoryMMSIs() []uint32 {
+	aisData.Lock()
+	defer aisData.Unlock()
+	mmsis := make([]uint32, len(aisData.mmsiHistories))
+	i := 0
+	for mmsi := range aisData.mmsiHistories {
+		mmsis[i] = mmsi
+		i++
+	}
+
+	return mmsis
+}
+
+// Returns the ShipHistory/true associated with the given MMSI, or nil/false if it doesn't.
+// Calling code should lock using the history's mutex if modifying or querying data.
 func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
 	aisData.Lock()
 	defer aisData.Unlock()
-	history, ok := aisData.mmsiPositions[mmsi]
+	history, ok := aisData.mmsiHistories[mmsi]
 	if ok {
 		return &history, ok
 	} else {
 		return nil, ok
 	}
+}
+
+// Returns a slice/true with all the PositionReports of type A and B, sorted by time received,
+// ascending, or nil/false if the given MMSI is unknown. If the history is known, sets the
+// given dirty val on the history
+func (aisData *AISData) GetPositionReports(mmsi uint32, newDirtyVal bool) []*aislib.PositionReport {
+	var history *ShipHistory
+	history, ok := aisData.GetShipHistory(mmsi)
+	if ok == false {
+		return nil
+	}
+
+	history.Lock()
+	defer history.Unlock()
+
+	// shortcut: if we have only one kind of position, don't bother comparing members of
+	// both types
+	if len(history.aPositions) == 0 {
+		positions := make([]*aislib.PositionReport, len(history.bPositions), len(history.bPositions))
+		for i, positionReport := range history.bPositions {
+			positions[i] = &positionReport.PositionReport
+		}
+		return positions
+	}
+
+	if len(history.bPositions) == 0 {
+		positions := make([]*aislib.PositionReport, len(history.aPositions), len(history.aPositions))
+		for i, positionReport := range history.aPositions {
+			positions[i] = &positionReport.PositionReport
+		}
+		return positions
+	}
+
+	var a, b uint32
+	for a < len() {
+
+	}
+
+	history.dirty = newDirtyVal
+	return
 }

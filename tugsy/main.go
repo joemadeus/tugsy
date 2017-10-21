@@ -35,6 +35,52 @@ func run() int {
 		return 1
 	}
 
+	logger.Info("Initializing image.PNG")
+	pngInit := image.Init(image.INIT_PNG)
+	if pngInit != image.INIT_PNG {
+		logger.Fatal("Failed to load INIT_PNG", "png_init", pngInit)
+		MachineAndProcessState.running = false
+		return 1
+	}
+	defer image.Quit()
+
+	logger.Info("Creating windows")
+	window, err := sdl.CreateWindow(
+		screenTitle, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, screenWidth, screenHeight, sdl.WINDOW_SHOWN)
+	if err != nil {
+		logger.Fatal("Failed to create window", "err", err)
+		MachineAndProcessState.running = false
+		return 1
+	}
+	defer window.Destroy()
+
+	logger.Info("Creating screen renderer")
+	screenRenderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
+	if err != nil {
+		logger.Fatal("Failed to create renderer", "err", err)
+		MachineAndProcessState.running = false
+		return 1
+	}
+	defer screenRenderer.Destroy()
+
+	logger.Info("Initializing resources")
+	err = InitResources(screenRenderer)
+	if err != nil {
+		logger.Fatal("Could not load resources", "err", err)
+		MachineAndProcessState.running = false
+		return 1
+	}
+	defer TeardownResources()
+
+	logger.Info("Initializing the display")
+	MachineAndProcessState.TheDisplay = currentView()
+	err = MachineAndProcessState.TheDisplay.Display()
+	if err != nil {
+		logger.Fatal("Could not initialize the display with the first view", "err", err)
+		MachineAndProcessState.running = false
+		return 1
+	}
+
 	logger.Info("Loading the AIS routers")
 	decoded := make(chan aislib.Message)
 	failed := make(chan aislib.FailedSentence)
@@ -55,53 +101,6 @@ func run() int {
 		}
 	}()
 
-	logger.Info("Creating windows")
-	window, err := sdl.CreateWindow(
-		screenTitle, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, screenWidth, screenHeight, sdl.WINDOW_SHOWN)
-	if err != nil {
-		logger.Fatal("Failed to create window", "err", err)
-		MachineAndProcessState.running = false
-		return 1
-	}
-	defer window.Destroy()
-
-	logger.Info("Creating renderer")
-	renderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED|sdl.RENDERER_PRESENTVSYNC)
-	if err != nil {
-		logger.Fatal("Failed to create renderer", "err", err)
-		MachineAndProcessState.running = false
-		return 1
-	}
-	defer renderer.Destroy()
-
-	logger.Info("Initializing image.PNG")
-	pngInit := image.Init(image.INIT_PNG)
-	if pngInit != image.INIT_PNG {
-		logger.Fatal("Failed to load INIT_PNG", "png_init", pngInit)
-		MachineAndProcessState.running = false
-		return 1
-	}
-	defer image.Quit()
-
-	logger.Info("Initializing resources")
-	err = InitResources(renderer)
-	if err != nil {
-		logger.Fatal("Could not load resources", "err", err)
-		MachineAndProcessState.running = false
-		return 1
-	}
-	defer TeardownResources()
-
-	logger.Info("Initializing the display")
-	MachineAndProcessState.TheDisplay = currentView()
-	err = MachineAndProcessState.TheDisplay.Redisplay(renderer)
-	if err != nil {
-		logger.Fatal("Could not initialize the display with the first view", "err", err)
-		MachineAndProcessState.running = false
-		return 1
-	}
-	renderer.Present()
-
 	MachineAndProcessState.TheData = NewAISData()
 	logger.Info("Starting the position culling loop")
 	go MachineAndProcessState.TheData.PrunePositions()
@@ -112,9 +111,13 @@ func run() int {
 	}
 
 	returnCode := 0
+	var ticks uint32
+	var delayMillis uint32
+	delayMillis = 1000 / targetFPS
 
 	logger.Info("Starting the UI loop")
 	for MachineAndProcessState.running {
+		ticks = sdl.GetTicks()
 		// PollEvent has to be run in the video init's thread
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch t := event.(type) {
@@ -123,18 +126,22 @@ func run() int {
 			case *sdl.KeyDownEvent:
 				switch t.Keysym.Sym {
 				case sdl.K_SPACE:
-					view := nextView()
-					err := view.Redisplay(renderer)
-					if err != nil {
-						logger.Fatal("Could not rebuild the display", "viewName", view.ViewName, "err", err)
-						returnCode = 1
-						MachineAndProcessState.running = false
-					} else {
-						renderer.Present()
-					}
+					MachineAndProcessState.TheDisplay = nextView()
 				}
 			}
+		}
 
+		err = MachineAndProcessState.TheDisplay.Display()
+		if err != nil {
+			logger.Fatal("Could not refresh the display", "viewName", MachineAndProcessState.TheDisplay.ViewName, "err", err)
+			returnCode = 1
+			MachineAndProcessState.running = false
+			break
+		}
+
+		// cap the frame rate to targetFPS
+		if ticks < delayMillis {
+			sdl.Delay(delayMillis - ticks)
 		}
 	}
 
