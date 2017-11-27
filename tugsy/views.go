@@ -1,30 +1,29 @@
 package main
 
 import (
+	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
-	image "github.com/veandco/go-sdl2/sdl_image"
 )
 
 const (
-	resDir      string = "./res"
-	baseMapFile string = "/base.png"
-	spriteFile  string = "/sprites.png"
-	infoFile    string = "/info"
+	resDir      = "./res"
+	baseMapFile = "/base.png"
+	spriteFile  = "/sprites.png"
 
 	spriteSize = 8 // pixels square
 
-	screenWidth  int    = 480
-	screenHeight int    = 600
-	screenTitle  string = "Tugsy"
+	screenWidth  = 480
+	screenHeight = 600
+	screenTitle  = "Tugsy"
 
 	targetFPS uint32 = 60
 
-	trackLinesR = 128
-	trackLinesG = 128
+	trackLinesR = 192
+	trackLinesG = 192
 	trackLinesB = 0
 
-	trackPointsR = 192
-	trackPointsG = 192
+	trackPointsR = 128
+	trackPointsG = 128
 	trackPointsB = 0
 )
 

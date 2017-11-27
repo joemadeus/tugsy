@@ -16,10 +16,11 @@ const (
 )
 
 var (
-	NoRouterConfigFound = errors.New("Could not find router configs")
+	NoRouterConfigFound = errors.New("could not find router configs")
 )
 
-type SourcedReport interface {
+type Positionable interface {
+	GetPositionReport() *aislib.PositionReport
 	GetSource() string
 	GetReceivedTime() time.Time
 }
@@ -38,27 +39,35 @@ func (st *SourceAndTime) GetReceivedTime() time.Time {
 }
 
 type SourcedClassAPositionReport struct {
-	*aislib.ClassAPositionReport
+	aislib.ClassAPositionReport
 	SourceAndTime
+}
+
+func (aPos *SourcedClassAPositionReport) GetPositionReport() *aislib.PositionReport {
+	return &aPos.PositionReport
 }
 
 type SourcedClassBPositionReport struct {
-	*aislib.ClassBPositionReport
+	aislib.ClassBPositionReport
 	SourceAndTime
 }
 
+func (bPos *SourcedClassBPositionReport) GetPositionReport() *aislib.PositionReport {
+	return &bPos.PositionReport
+}
+
 type SourcedBaseStationReport struct {
-	*aislib.BaseStationReport
+	aislib.BaseStationReport
 	SourceAndTime
 }
 
 type SourcedBinaryBroadcast struct {
-	*aislib.BinaryBroadcast
+	aislib.BinaryBroadcast
 	SourceAndTime
 }
 
 type SourcedStaticVoyageData struct {
-	*aislib.StaticVoyageData
+	aislib.StaticVoyageData
 	SourceAndTime
 }
 
@@ -68,10 +77,9 @@ type RemoteAISServer struct {
 	Failed    chan aislib.FailedSentence
 	conn      net.Conn
 
-	sourceName string
-
-	hostname string
-	port     int
+	SourceName string
+	Host       string
+	Port       int
 }
 
 func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.FailedSentence, config *Config) ([]*RemoteAISServer, error) {
@@ -80,18 +88,15 @@ func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.
 	}
 
 	var routers []*RemoteAISServer
-	routerConfigs := config.Get("routers")
-	for routerConfig, i := range routerConfigs {
-		routers[i] = &RemoteAISServer{
-			inStrings: make(chan string),
-			Decoded:   decoded,
-			Failed:    failed,
+	err := config.UnmarshalKey("routers", &routers)
+	if err != nil {
+		return nil, err
+	}
 
-			sourceName: sourceName,
-
-			hostname: host,
-			port:     port,
-		}
+	for _, router := range routers {
+		router.Decoded = decoded
+		router.Failed = failed
+		router.inStrings = make(chan string)
 	}
 
 	return routers, nil
@@ -105,19 +110,19 @@ func (router *RemoteAISServer) start() {
 		timeoutSleep := time.Duration(connRetryTimeoutSecs) * time.Second
 		for MachineAndProcessState.running {
 			if router.conn != nil {
-				logger.Error("Connection broken", "host", router.hostname, "retrying in", connRetryTimeoutSecs)
+				logger.Error("Connection broken", "host", router.Host, "retrying in", connRetryTimeoutSecs)
 				time.Sleep(timeoutSleep)
 			}
 
-			serverAddr, err := net.ResolveTCPAddr("tcp", router.hostname)
+			serverAddr, err := net.ResolveTCPAddr("tcp", router.Host)
 			if err != nil {
-				logger.Error("Could not resolve the AIS host", "error", err, "host", router.hostname, "retrying in", connRetryTimeoutSecs)
+				logger.Error("Could not resolve the AIS host", "error", err, "host", router.Host, "retrying in", connRetryTimeoutSecs)
 				continue
 			}
 
 			router.conn, err = net.DialTCP("tcp", nil, serverAddr)
 			if err != nil {
-				logger.Error("Could not connect to the AIS host", "error", err, "host", router.hostname, "retrying in", connRetryTimeoutSecs)
+				logger.Error("Could not connect to the AIS host", "error", err, "host", router.Host, "retrying in", connRetryTimeoutSecs)
 				continue
 			}
 			defer router.conn.Close()
@@ -138,7 +143,7 @@ func (router *RemoteAISServer) stop() error {
 }
 
 func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, failed chan aislib.FailedSentence) {
-	logger.Info("Starting AIS loop for " + router.sourceName)
+	logger.Info("Starting AIS loop for " + router.SourceName)
 	for {
 		select {
 		case message := <-decoded:
@@ -149,8 +154,8 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding class A report", "err", err)
 					break
 				}
-				report := &SourcedClassAPositionReport{&t, SourceAndTime{router.sourceName, time.Now()}}
-				MachineAndProcessState.TheData.AddAPosition(report)
+				report := &SourcedClassAPositionReport{t, SourceAndTime{router.SourceName, time.Now()}}
+				MachineAndProcessState.TheData.AddPosition(report)
 
 			case 4:
 				t, err := aislib.DecodeBaseStationReport(message.Payload)
@@ -158,7 +163,7 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding base station report", "err", err)
 					break
 				}
-				report := &SourcedBaseStationReport{&t, SourceAndTime{router.sourceName, time.Now()}}
+				report := &SourcedBaseStationReport{t, SourceAndTime{router.SourceName, time.Now()}}
 				MachineAndProcessState.TheData.UpdateBaseStationReport(report)
 
 			case 5:
@@ -167,7 +172,7 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding voyage data", "err", err)
 					break
 				}
-				report := &SourcedStaticVoyageData{&t, SourceAndTime{router.sourceName, time.Now()}}
+				report := &SourcedStaticVoyageData{t, SourceAndTime{router.SourceName, time.Now()}}
 				MachineAndProcessState.TheData.UpdateStaticVoyageData(report)
 
 			case 8:
@@ -176,7 +181,7 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding binary broadcast", "err", err)
 					break
 				}
-				report := &SourcedBinaryBroadcast{&t, SourceAndTime{router.sourceName, time.Now()}}
+				report := &SourcedBinaryBroadcast{t, SourceAndTime{router.SourceName, time.Now()}}
 				MachineAndProcessState.TheData.UpdateBinaryBroadcast(report)
 
 			case 18:
@@ -185,8 +190,8 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 					logger.Error("Decoding class B report", "err", err)
 					break
 				}
-				report := &SourcedClassBPositionReport{&t, SourceAndTime{router.sourceName, time.Now()}}
-				MachineAndProcessState.TheData.AddBPosition(report)
+				report := &SourcedClassBPositionReport{t, SourceAndTime{router.SourceName, time.Now()}}
+				MachineAndProcessState.TheData.AddPosition(report)
 
 			default:
 				logger.Debug("Unsupported message type %2d", message.Type)

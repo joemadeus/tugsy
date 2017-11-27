@@ -4,8 +4,8 @@ import (
 	"os"
 
 	"github.com/andmarios/aislib"
+	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
-	image "github.com/veandco/go-sdl2/sdl_image"
 )
 
 // STARTUP:
@@ -96,7 +96,7 @@ func run() int {
 		for _, r := range routers {
 			err := r.stop()
 			if err != nil {
-				logger.Warn("Error while stopping a router", "sourceName", r.sourceName, "err", err)
+				logger.Warn("Error while stopping a router", "sourceName", r.SourceName, "err", err)
 			}
 		}
 	}()

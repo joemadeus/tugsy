@@ -18,7 +18,7 @@ func LoadConfig() (*Config, error) {
 	// Next load config from files in /config. See https://github.com/spf13/viper#reading-config-files
 	// for details about how this works. The code below makes it look for a file at /config/config.XXX,
 	// where XXX can be one of a few different supported extensions.
-	cfg.AddConfigPath("/config")
+	cfg.AddConfigPath("./config")
 	cfg.SetConfigName("config")
 
 	err := cfg.ReadInConfig()

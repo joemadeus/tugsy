@@ -17,8 +17,7 @@ const (
 type ShipHistory struct {
 	// position history is sorted oldest-first -- we append new positions
 	// to the end
-	aPositions []*SourcedClassAPositionReport // TODO: Keep sorted
-	bPositions []*SourcedClassBPositionReport // TODO: Keep sorted
+	positions  []Positionable
 	voyagedata *SourcedStaticVoyageData
 	dirty      bool
 	*sync.Mutex
@@ -26,52 +25,39 @@ type ShipHistory struct {
 
 func NewShipHistory() ShipHistory {
 	return ShipHistory{
-		aPositions: make([]*SourcedClassAPositionReport, initialPositionCap),
-		bPositions: make([]*SourcedClassBPositionReport, initialPositionCap),
+		positions: make([]Positionable, initialPositionCap),
 	}
 }
 
-func (history *ShipHistory) addAndPruneAPosition(report *SourcedClassAPositionReport) {
+func (history *ShipHistory) addAndPrunePositions(report Positionable) {
 	// mutex held by calling code
-	var newSlice []*SourcedClassAPositionReport
-	newSlice = history.prune(history.aPositions)
-	newSlice = append(newSlice, report)
+	history.prune()
+	history.positions = append(history.positions, report)
 	history.dirty = true
-	history.aPositions = newSlice
 }
 
-func (history *ShipHistory) addAndPruneBPosition(report *SourcedClassBPositionReport) {
-	// mutex held by calling code
-	var newSlice []*SourcedClassBPositionReport
-	newSlice = history.prune(history.bPositions)
-	newSlice = append(newSlice, report)
-	history.dirty = true
-	history.bPositions = newSlice
-}
-
-func (history *ShipHistory) prune(reports []SourcedReport) []SourcedReport {
+func (history *ShipHistory) prune() {
 	// mutex held by calling code
 	since := time.Now().Add(positionRetentionTime * -1)
 
 	// shortcut -- test the first element. if it's after 'since', just return the original
 	// slice and don't flag 'dirty'
-	if reports[0].GetReceivedTime().After(since) {
-		return reports
+	if history.positions[0].GetReceivedTime().After(since) {
+		return
 	}
 
 	history.dirty = true
-	var newSlice []SourcedReport
-	i := 0
-	for i < len(reports) {
-		if reports[i].GetReceivedTime().After(since) {
-			// the rest of these should be > since, so just copy them without testing
-			newSlice = append(newSlice, reports[i:]...)
-			return newSlice
+
+	var a int
+	var position Positionable
+	for a, position = range history.positions {
+		if position.GetReceivedTime().After(since) {
+			break
 		}
-		i++
 	}
 
-	return newSlice
+	var newSlice []Positionable
+	history.positions = append(newSlice, history.positions[a:]...)
 }
 
 type AISData struct {
@@ -91,20 +77,12 @@ func NewAISData() *AISData {
 	}
 }
 
-func (aisData *AISData) AddAPosition(report *SourcedClassAPositionReport) {
-	history := aisData.getOrCreateShipHistory(report.MMSI)
+func (aisData *AISData) AddPosition(report Positionable) {
+	history := aisData.getOrCreateShipHistory(report.GetPositionReport().MMSI)
 	history.Lock()
 	defer history.Unlock()
-	history.addAndPruneAPosition(report)
-	aisData.dirty = true // TODO: remove when we only update dirtied positions
-}
-
-func (aisData *AISData) AddBPosition(report *SourcedClassBPositionReport) {
-	history := aisData.getOrCreateShipHistory(report.MMSI)
-	history.Lock()
-	defer history.Unlock()
-	history.addAndPruneBPosition(report)
-	aisData.dirty = true // TODO: remove when we only update dirtied positions
+	history.addAndPrunePositions(report)
+	aisData.dirty = true
 }
 
 func (aisData *AISData) getOrCreateShipHistory(mmsi uint32) *ShipHistory {
@@ -159,8 +137,7 @@ func (aisData *AISData) PrunePositions() {
 				}
 
 				history.Lock()
-				history.aPositions = history.prune(history.aPositions)
-				history.bPositions = history.prune(history.bPositions)
+				history.prune()
 				if history.dirty {
 					aisData.dirty = true // TODO: remove when we only update dirtied positions
 				}
@@ -197,12 +174,13 @@ func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
 	}
 }
 
-// Returns a slice/true with all the PositionReports of type A and B, sorted by time received,
-// ascending, or nil/false if the given MMSI is unknown. If the history is known, sets the
-// given dirty val on the history
+// Returns a slice with all the position reports, sorted by time received ascending, or nil
+// if the given MMSI is unknown. If the history is known, sets the given dirty val on the history
 func (aisData *AISData) GetPositionReports(mmsi uint32, newDirtyVal bool) []*aislib.PositionReport {
-	var history *ShipHistory
+	aisData.Lock()
 	history, ok := aisData.GetShipHistory(mmsi)
+	aisData.Unlock()
+
 	if ok == false {
 		return nil
 	}
@@ -210,29 +188,13 @@ func (aisData *AISData) GetPositionReports(mmsi uint32, newDirtyVal bool) []*ais
 	history.Lock()
 	defer history.Unlock()
 
-	// shortcut: if we have only one kind of position, don't bother comparing members of
-	// both types
-	if len(history.aPositions) == 0 {
-		positions := make([]*aislib.PositionReport, len(history.bPositions), len(history.bPositions))
-		for i, positionReport := range history.bPositions {
-			positions[i] = &positionReport.PositionReport
-		}
-		return positions
-	}
-
-	if len(history.bPositions) == 0 {
-		positions := make([]*aislib.PositionReport, len(history.aPositions), len(history.aPositions))
-		for i, positionReport := range history.aPositions {
-			positions[i] = &positionReport.PositionReport
-		}
-		return positions
-	}
-
-	var a, b uint32
-	for a < len() {
-
+	//var positions [len(history.positions)]Positionable
+	positionCount := len(history.positions)
+	positions := make([]*aislib.PositionReport, positionCount, positionCount)
+	for i := 0; i < positionCount; i++ {
+		positions[i] = history.positions[i].GetPositionReport()
 	}
 
 	history.dirty = newDirtyVal
-	return
+	return positions
 }

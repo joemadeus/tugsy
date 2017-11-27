@@ -1,4 +1,7 @@
 routers:
-  "local":
+  - sourceName: "local"
     host: "nema"
     port: 29777
+  - sourceName: "another"
+    host: "over.there.com"
+    port: 29778
