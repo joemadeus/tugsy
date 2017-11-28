@@ -9,14 +9,11 @@ import (
 )
 
 const (
-	positionRetentionTime   = time.Duration(12) * time.Hour
-	positionCullingInterval = time.Duration(5) * time.Second
-	initialPositionCap      = 50
+	initialPositionCap = 50
 )
 
 type ShipHistory struct {
-	// position history is sorted oldest-first -- we append new positions
-	// to the end
+	// position history is sorted oldest-first -- we append new positions to the end
 	positions  []Positionable
 	voyagedata *SourcedStaticVoyageData
 	dirty      bool
@@ -25,24 +22,22 @@ type ShipHistory struct {
 
 func NewShipHistory() ShipHistory {
 	return ShipHistory{
-		positions: make([]Positionable, initialPositionCap),
+		positions: make([]Positionable, 0, initialPositionCap),
 	}
 }
 
-func (history *ShipHistory) addAndPrunePositions(report Positionable) {
+func (history *ShipHistory) addPosition(report Positionable) {
 	// mutex held by calling code
-	history.prune()
 	history.positions = append(history.positions, report)
 	history.dirty = true
 }
 
-func (history *ShipHistory) prune() {
+func (history *ShipHistory) prune(since time.Time) {
 	// mutex held by calling code
-	since := time.Now().Add(positionRetentionTime * -1)
 
 	// shortcut -- test the first element. if it's after 'since', just return the original
 	// slice and don't flag 'dirty'
-	if history.positions[0].GetReceivedTime().After(since) {
+	if len(history.positions) == 0 || history.positions[0].GetReceivedTime().After(since) {
 		return
 	}
 
@@ -65,7 +60,10 @@ type AISData struct {
 	mmsiBasestations map[uint32]SourcedBaseStationReport
 	mmsiBinaryData   map[uint32]SourcedBinaryBroadcast
 
-	dirty bool // TODO: remove when we only update dirtied positions
+	positionRetentionTime   time.Duration
+	positionCullingInterval time.Duration
+
+	dirty bool
 	*sync.Mutex
 }
 
@@ -74,6 +72,9 @@ func NewAISData() *AISData {
 		mmsiHistories:    make(map[uint32]ShipHistory),
 		mmsiBasestations: make(map[uint32]SourcedBaseStationReport),
 		mmsiBinaryData:   make(map[uint32]SourcedBinaryBroadcast),
+
+		positionRetentionTime:   time.Duration(12) * time.Hour,
+		positionCullingInterval: time.Duration(5) * time.Second,
 	}
 }
 
@@ -81,7 +82,8 @@ func (aisData *AISData) AddPosition(report Positionable) {
 	history := aisData.getOrCreateShipHistory(report.GetPositionReport().MMSI)
 	history.Lock()
 	defer history.Unlock()
-	history.addAndPrunePositions(report)
+	history.addPosition(report)
+	history.prune(aisData.getPruneSinceTime())
 	aisData.dirty = true
 }
 
@@ -119,7 +121,7 @@ func (aisData *AISData) UpdateBinaryBroadcast(report *SourcedBinaryBroadcast) {
 // Run as a go func. Periodically, and forever, prune positions from all the known ship
 // histories.
 func (aisData *AISData) PrunePositions() {
-	cullChan := time.Tick(positionCullingInterval)
+	cullChan := time.Tick(aisData.positionCullingInterval)
 
 	for {
 		select {
@@ -129,6 +131,7 @@ func (aisData *AISData) PrunePositions() {
 			// doing so means potentially examining only a subset of all the shipdata, but
 			// that's alright: this isn't toooo important a process & we'll get to the ones
 			// we miss next time
+			since := aisData.getPruneSinceTime()
 			for _, mmsi := range aisData.GetHistoryMMSIs() {
 				history, ok := aisData.mmsiHistories[mmsi]
 				if ok == false {
@@ -137,9 +140,9 @@ func (aisData *AISData) PrunePositions() {
 				}
 
 				history.Lock()
-				history.prune()
+				history.prune(since)
 				if history.dirty {
-					aisData.dirty = true // TODO: remove when we only update dirtied positions
+					aisData.dirty = true
 				}
 				history.Unlock()
 			}
@@ -151,7 +154,7 @@ func (aisData *AISData) PrunePositions() {
 func (aisData *AISData) GetHistoryMMSIs() []uint32 {
 	aisData.Lock()
 	defer aisData.Unlock()
-	mmsis := make([]uint32, len(aisData.mmsiHistories))
+	mmsis := make([]uint32, 0, len(aisData.mmsiHistories))
 	i := 0
 	for mmsi := range aisData.mmsiHistories {
 		mmsis[i] = mmsi
@@ -188,13 +191,16 @@ func (aisData *AISData) GetPositionReports(mmsi uint32, newDirtyVal bool) []*ais
 	history.Lock()
 	defer history.Unlock()
 
-	//var positions [len(history.positions)]Positionable
 	positionCount := len(history.positions)
-	positions := make([]*aislib.PositionReport, positionCount, positionCount)
+	positions := make([]*aislib.PositionReport, 0, positionCount)
 	for i := 0; i < positionCount; i++ {
 		positions[i] = history.positions[i].GetPositionReport()
 	}
 
 	history.dirty = newDirtyVal
 	return positions
+}
+
+func (aisData *AISData) getPruneSinceTime() time.Time {
+	return time.Now().Add(aisData.positionRetentionTime * -1)
 }

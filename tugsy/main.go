@@ -17,6 +17,8 @@ import (
 // * Master loop
 // * UI loop
 
+const appConfig = "./config"
+
 var MachineAndProcessState State
 
 type State struct {
@@ -28,7 +30,7 @@ type State struct {
 func run() int {
 	logger.Info("Starting Tugsy")
 	logger.Info("Loading config")
-	config, err := LoadConfig()
+	config, err := LoadConfig(appConfig)
 	if err != nil {
 		logger.Fatal("Could not load the config", "err", err)
 		MachineAndProcessState.running = false
