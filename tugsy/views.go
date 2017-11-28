@@ -27,9 +27,9 @@ const (
 	trackPointsB = 0
 )
 
-var ViewList = [3]string{
-	"pvd_harbor",
-	"pvd_to_bristol",
+var ViewList = [1]string{
+	//"pvd_harbor", // TODO: Build GIS data/maps for these two scenes
+	//"pvd_to_bristol",
 	"pvd_to_gansett",
 }
 
@@ -63,12 +63,6 @@ func InitResources(screenRenderer *sdl.Renderer) error {
 		if err != nil {
 			return err
 		}
-
-		spriteTexture, err := image.LoadTexture(screenRenderer, getResourcePath(ViewList[index], spriteFile))
-		if err != nil {
-			return err
-		}
-
 		baseMap := &BaseMap{
 			Tex:    baseTexture,
 			LRGeo:  RealWorldPosition{0.0, 0.0},
@@ -76,7 +70,13 @@ func InitResources(screenRenderer *sdl.Renderer) error {
 			width:  float64(screenWidth),
 			height: float64(screenHeight),
 		}
+
+		spriteTexture, err := image.LoadTexture(screenRenderer, getResourcePath(ViewList[index], spriteFile))
+		if err != nil {
+			return err
+		}
 		sprites := &SpriteSheet{spriteTexture, spriteSize}
+
 		Views[index] = &View{
 			BaseMap:        baseMap,
 			ViewName:       ViewList[index],

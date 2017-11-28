@@ -37,6 +37,35 @@ func run() int {
 		return 1
 	}
 
+	logger.Info("Loading the AIS routers")
+	decoded := make(chan aislib.Message)
+	failed := make(chan aislib.FailedSentence)
+	routers, err := RemoteAISServersFromConfig(decoded, failed, config)
+	if err != nil {
+		// TODO: This potentially leaves routers in a dirty state
+		logger.Fatal("Could not initialize the routers", "err", err)
+		MachineAndProcessState.running = false
+		return 1
+	}
+
+	defer func() {
+		for _, r := range routers {
+			err := r.stop()
+			if err != nil {
+				logger.Warn("Error while stopping a router", "sourceName", r.SourceName, "err", err)
+			}
+		}
+	}()
+
+	MachineAndProcessState.TheData = NewAISData()
+	logger.Info("Starting the position culling loop")
+	go MachineAndProcessState.TheData.PrunePositions()
+
+	logger.Info("Starting the AIS update loops")
+	for _, r := range routers {
+		go r.DecodePositions(decoded, failed)
+	}
+
 	logger.Info("Initializing image.PNG")
 	pngInit := image.Init(image.INIT_PNG)
 	if pngInit != image.INIT_PNG {
@@ -68,7 +97,7 @@ func run() int {
 	logger.Info("Initializing resources")
 	err = InitResources(screenRenderer)
 	if err != nil {
-		logger.Fatal("Could not load resources", "err", err)
+		logger.Error("Could not load resources", "err", err)
 		MachineAndProcessState.running = false
 		return 1
 	}
@@ -83,41 +112,13 @@ func run() int {
 		return 1
 	}
 
-	logger.Info("Loading the AIS routers")
-	decoded := make(chan aislib.Message)
-	failed := make(chan aislib.FailedSentence)
-	routers, err := RemoteAISServersFromConfig(decoded, failed, config)
-	if err != nil {
-		// TODO: This potentially leaves routers in a dirty state
-		logger.Fatal("Could not initialize the routers", "err", err)
-		MachineAndProcessState.running = false
-		return 1
-	}
-
-	defer func() {
-		for _, r := range routers {
-			err := r.stop()
-			if err != nil {
-				logger.Warn("Error while stopping a router", "sourceName", r.SourceName, "err", err)
-			}
-		}
-	}()
-
-	MachineAndProcessState.TheData = NewAISData()
-	logger.Info("Starting the position culling loop")
-	go MachineAndProcessState.TheData.PrunePositions()
-
-	logger.Info("Starting the AIS update loops")
-	for _, r := range routers {
-		go r.DecodePositions(decoded, failed)
-	}
-
 	returnCode := 0
 	var ticks uint32
 	var delayMillis uint32
 	delayMillis = 1000 / targetFPS
 
 	logger.Info("Starting the UI loop")
+	MachineAndProcessState.running = true
 	for MachineAndProcessState.running {
 		ticks = sdl.GetTicks()
 		// PollEvent has to be run in the video init's thread

@@ -64,7 +64,7 @@ type AISData struct {
 	positionCullingInterval time.Duration
 
 	dirty bool
-	*sync.Mutex
+	sync.Mutex
 }
 
 func NewAISData() *AISData {
