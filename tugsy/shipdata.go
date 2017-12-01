@@ -4,8 +4,6 @@ import (
 	"time"
 
 	"sync"
-
-	"github.com/andmarios/aislib"
 )
 
 const (
@@ -150,7 +148,7 @@ func (aisData *AISData) PrunePositions() {
 	}
 }
 
-// Returns a slice of all known MMSI values
+// Returns a slice of all known ShipHistory MMSI values
 func (aisData *AISData) GetHistoryMMSIs() []uint32 {
 	aisData.Lock()
 	defer aisData.Unlock()
@@ -177,28 +175,25 @@ func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
 	}
 }
 
+type translateToPointsFunc func(positionReports []Positionable)
+
 // Returns a slice with all the position reports, sorted by time received ascending, or nil
-// if the given MMSI is unknown. If the history is known, sets the given dirty val on the history
-func (aisData *AISData) GetPositionReports(mmsi uint32, newDirtyVal bool) []*aislib.PositionReport {
+// if the given MMSI is unknown
+func (aisData *AISData) GetPositionReports(mmsi uint32, translateFunc translateToPointsFunc) bool {
 	aisData.Lock()
 	history, ok := aisData.GetShipHistory(mmsi)
 	aisData.Unlock()
 
 	if ok == false {
-		return nil
+		return false
 	}
 
 	history.Lock()
 	defer history.Unlock()
 
-	positionCount := len(history.positions)
-	positions := make([]*aislib.PositionReport, 0, positionCount)
-	for i := 0; i < positionCount; i++ {
-		positions[i] = history.positions[i].GetPositionReport()
-	}
-
-	history.dirty = newDirtyVal
-	return positions
+	translateFunc(history.positions)
+	history.dirty = false
+	return true
 }
 
 func (aisData *AISData) getPruneSinceTime() time.Time {

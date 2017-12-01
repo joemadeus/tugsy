@@ -106,7 +106,7 @@ type View struct {
 	screenRenderer *sdl.Renderer
 }
 
-// Clears the renderer and redisplays the base map and tracks
+// Clears the renderer and redisplays the base map and all tracks
 func (view *View) Display() error {
 	if MachineAndProcessState.TheData.dirty == false {
 		// if there are no updates since the last refresh, don't
@@ -127,26 +127,28 @@ func (view *View) Display() error {
 	}
 
 	for _, mmsi := range MachineAndProcessState.TheData.GetHistoryMMSIs() {
-		positionReports := MachineAndProcessState.TheData.GetPositionReports(mmsi, false)
-		if positionReports == nil {
-			logger.Debug("An MMSI was removed before we could display it", "MMSI", mmsi)
-			continue
+		var currentPosition sdl.Point
+		var sdlPoints []sdl.Point
+		translatePositionFunc := func(positionReports []Positionable) {
+			sdlPoints := make([]sdl.Point, 0, len(positionReports))
+			for i, positionReport := range positionReports {
+				realWorldPosition := RealWorldPosition{
+					X: positionReport.GetPositionReport().Lat,
+					Y: positionReport.GetPositionReport().Lon,
+				}
+				baseMapPosition := view.getBaseMapPosition(realWorldPosition)
+				sdlPoints[i] = sdl.Point{
+					X: int32(baseMapPosition.X + 0.5),
+					Y: int32(baseMapPosition.Y + 0.5),
+				}
+				currentPosition = sdlPoints[i]
+			}
 		}
 
-		// TODO: bad mixing of SDL rendering primitives and app code, here
-		sdlPoints := make([]sdl.Point, len(positionReports), len(positionReports))
-		var currentPosition sdl.Point
-		for i, positionReport := range positionReports {
-			realWorldPosition := RealWorldPosition{
-				X: positionReport.Lat,
-				Y: positionReport.Lon,
-			}
-			baseMapPosition := view.getBaseMapPosition(realWorldPosition)
-			sdlPoints[i] = sdl.Point{
-				X: int32(baseMapPosition.X + 0.5),
-				Y: int32(baseMapPosition.Y + 0.5),
-			}
-			currentPosition = sdlPoints[i]
+		ok := MachineAndProcessState.TheData.GetPositionReports(mmsi, translatePositionFunc)
+		if ok == false {
+			logger.Info("A ShipData was removed before we could render it", "mmsi", mmsi)
+			continue
 		}
 
 		view.screenRenderer.SetDrawColor(trackLinesR, trackLinesG, trackLinesB, sdl.ALPHA_OPAQUE)
