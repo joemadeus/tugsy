@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 
+	"os/signal"
+
 	"github.com/andmarios/aislib"
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
@@ -117,10 +119,24 @@ func run() int {
 	var delayMillis uint32
 	delayMillis = 1000 / targetFPS
 
+	logger.Info("Adding signal handler")
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt)
+
 	logger.Info("Starting the UI loop")
 	MachineAndProcessState.running = true
 	for MachineAndProcessState.running {
 		ticks = sdl.GetTicks()
+
+		// See if we should quit on interrupt
+		select {
+		case <-signalChan:
+			logger.Info("Terminating on interrupt signal")
+			MachineAndProcessState.running = false
+			continue
+		default:
+		}
+
 		// PollEvent has to be run in the video init's thread
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch t := event.(type) {
@@ -134,6 +150,7 @@ func run() int {
 			}
 		}
 
+		// Redisplay
 		err = MachineAndProcessState.TheDisplay.Display()
 		if err != nil {
 			logger.Fatal("Could not refresh the display", "viewName", MachineAndProcessState.TheDisplay.ViewName, "err", err)
