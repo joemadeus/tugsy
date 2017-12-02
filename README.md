@@ -15,4 +15,4 @@ The mainboard is this: https://www.olimex.com/Products/OLinuXino/A20/A20-OLinuXI
 
 The enclosure for this is partly ready-made frame (see https://www.olimex.com/Products/OLinuXino/LCD/LCD7-METAL-FRAME/) and partly laser-cut pieces of my own design -- that frame is useful but ugly.
 
-I'm building a quarter-wave groundplane antenna, as well, with the generous help of @farzadb82 -- the model for it and various other bits can be found in `../antenna`.
+I'm building a quarter-wave groundplane antenna, as well, with the generous help of @farzadb82 -- the model for it and various other bits can be found in `misc`.
