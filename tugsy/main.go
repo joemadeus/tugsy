@@ -125,6 +125,8 @@ func run() int {
 
 	logger.Info("Starting the UI loop")
 	MachineAndProcessState.running = true
+	// set this to dirty so we display the initial view
+	MachineAndProcessState.TheData.dirty = true
 	for MachineAndProcessState.running {
 		ticks = sdl.GetTicks()
 
