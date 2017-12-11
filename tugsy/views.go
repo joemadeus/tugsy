@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -8,15 +10,10 @@ import (
 const (
 	resDir      = "./res"
 	baseMapFile = "/base.png"
-	spriteFile  = "/sprites.png"
-
-	spriteSize = 8 // pixels square
 
 	screenWidth  = 480
 	screenHeight = 600
 	screenTitle  = "Tugsy"
-
-	targetFPS uint32 = 60
 
 	trackLinesR = 192
 	trackLinesG = 192
@@ -27,74 +24,85 @@ const (
 	trackPointsB = 0
 )
 
-var ViewList = [1]string{
-	//"pvd_harbor", // TODO: Build GIS data/maps for these two scenes
-	//"pvd_to_bristol",
-	"pvd_to_gansett",
-}
-
-var index = 0
-var Views [len(ViewList)]*View
-
-func currentView() *View {
-	return Views[index]
-}
-
-func nextView() *View {
-	if index == len(Views)-1 {
-		index = 0
-	} else {
-		index += 1
-	}
-	return Views[index]
-}
+var NoViewConfigFound = errors.New("could not find view configs")
 
 // Returns a path to a resource in the given view
 func getResourcePath(viewName string, pngResource string) string {
 	return resDir + "/" + viewName + pngResource
 }
 
-func InitResources(screenRenderer *sdl.Renderer) error {
-	for index := range ViewList {
-		viewName := ViewList[index]
-		logger.Info("Loading view", "viewName", viewName)
+type ViewSet struct {
+	index int
+	Views []*View
+}
 
-		baseTexture, err := image.LoadTexture(screenRenderer, getResourcePath(ViewList[index], baseMapFile))
+type ViewConfig struct {
+	mapName string
+	north   float64
+	south   float64
+	east    float64
+	west    float64
+}
+
+func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, error) {
+	if config.IsSet("views") == false {
+		return nil, NoViewConfigFound
+	}
+
+	var viewConfigs []*ViewConfig
+	err := config.UnmarshalKey("views", &viewConfigs)
+	if err != nil {
+		return nil, err
+	}
+
+	viewSet := &ViewSet{
+		index: 0,
+		Views: make([]*View, 0),
+	}
+
+	for _, viewConfig := range viewConfigs {
+		logger.Info("Loading view", "viewName", viewConfig.mapName)
+		baseTexture, err := image.LoadTexture(screenRenderer, getResourcePath(viewConfig.mapName, baseMapFile))
 		if err != nil {
-			return err
+			return nil, err
 		}
+
 		baseMap := &BaseMap{
 			Tex:    baseTexture,
-			LRGeo:  RealWorldPosition{0.0, 0.0},
-			ULGeo:  RealWorldPosition{0.0, 0.0},
+			SWGeo:  RealWorldPosition{viewConfig.west, viewConfig.south},
+			NEGeo:  RealWorldPosition{viewConfig.east, viewConfig.north},
 			width:  float64(screenWidth),
 			height: float64(screenHeight),
 		}
 
-		spriteTexture, err := image.LoadTexture(screenRenderer, getResourcePath(ViewList[index], spriteFile))
-		if err != nil {
-			return err
-		}
-		sprites := &SpriteSheet{spriteTexture, spriteSize}
-
-		Views[index] = &View{
+		viewSet.Views = append(viewSet.Views, &View{
 			BaseMap:        baseMap,
-			ViewName:       ViewList[index],
-			Sprites:        sprites,
+			ViewName:       viewConfig.mapName,
 			screenRenderer: screenRenderer,
-		}
+		})
 	}
 
-	return nil
+	return viewSet, nil
 }
 
-func TeardownResources() {
+func (viewSet *ViewSet) currentView() *View {
+	return viewSet.Views[viewSet.index]
+}
+
+func (viewSet *ViewSet) nextView() *View {
+	if viewSet.index == len(viewSet.Views)-1 {
+		viewSet.index = 0
+	} else {
+		viewSet.index += 1
+	}
+	return viewSet.Views[viewSet.index]
+}
+
+func (viewSet *ViewSet) TeardownResources() {
 	logger.Info("Tearing down views")
-	for index := range ViewList {
-		view := Views[index]
+	for _, view := range viewSet.Views {
 		logger.Info("Unloading view", view.ViewName)
 		view.BaseMap.Tex.Destroy()
-		view.Sprites.Tex.Destroy()
 	}
 
 }
@@ -102,7 +110,6 @@ func TeardownResources() {
 type View struct {
 	*BaseMap
 	ViewName       string
-	Sprites        *SpriteSheet
 	screenRenderer *sdl.Renderer
 }
 
@@ -145,7 +152,7 @@ func (view *View) Display() error {
 			}
 		}
 
-		ok := MachineAndProcessState.TheData.GetPositionReports(mmsi, translatePositionFunc)
+		ok := MachineAndProcessState.TheData.TranslatePositionReports(mmsi, translatePositionFunc)
 		if ok == false {
 			logger.Info("A ShipData was removed before we could render it", "mmsi", mmsi)
 			continue
@@ -168,8 +175,8 @@ func (view *View) Display() error {
 // base map using a simple linear approximation
 func (view *View) getBaseMapPosition(position RealWorldPosition) BaseMapPosition {
 	return BaseMapPosition{
-		(position.X - view.LRGeo.X) / (view.ULGeo.X - view.LRGeo.X) * view.width,
-		(position.Y - view.LRGeo.Y) / (view.ULGeo.Y - view.LRGeo.Y) * view.height,
+		(position.X - view.SWGeo.X) / (view.NEGeo.X - view.SWGeo.X) * view.width,
+		(position.Y - view.SWGeo.Y) / (view.NEGeo.Y - view.SWGeo.Y) * view.height,
 	}
 }
 
@@ -186,16 +193,7 @@ type BaseMapPosition position
 
 type BaseMap struct {
 	Tex           *sdl.Texture
-	ULGeo         RealWorldPosition
-	LRGeo         RealWorldPosition
+	NEGeo         RealWorldPosition
+	SWGeo         RealWorldPosition
 	width, height float64
-}
-
-type SpriteSheet struct {
-	Tex        *sdl.Texture
-	SpriteSize int
-}
-
-type Sprite struct {
-	sheetX, sheetY uint64
 }

@@ -19,7 +19,10 @@ import (
 // * Master loop
 // * UI loop
 
-const appConfig = "./config"
+const (
+	appConfig        = "./config"
+	targetFPS uint32 = 60
+)
 
 var MachineAndProcessState State
 
@@ -97,16 +100,16 @@ func run() int {
 	defer screenRenderer.Destroy()
 
 	logger.Info("Initializing resources")
-	err = InitResources(screenRenderer)
+	viewSet, err := ViewSetFromConfig(screenRenderer, config)
 	if err != nil {
 		logger.Error("Could not load resources", "err", err)
 		MachineAndProcessState.running = false
 		return 1
 	}
-	defer TeardownResources()
+	defer viewSet.TeardownResources()
 
 	logger.Info("Initializing the display")
-	MachineAndProcessState.TheDisplay = currentView()
+	MachineAndProcessState.TheDisplay = viewSet.currentView()
 	err = MachineAndProcessState.TheDisplay.Display()
 	if err != nil {
 		logger.Fatal("Could not initialize the display with the first view", "err", err)
@@ -147,7 +150,7 @@ func run() int {
 			case *sdl.KeyDownEvent:
 				switch t.Keysym.Sym {
 				case sdl.K_SPACE:
-					MachineAndProcessState.TheDisplay = nextView()
+					MachineAndProcessState.TheDisplay = viewSet.nextView()
 				}
 			}
 		}
