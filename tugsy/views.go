@@ -37,11 +37,11 @@ type ViewSet struct {
 }
 
 type ViewConfig struct {
-	mapName string
-	north   float64
-	south   float64
-	east    float64
-	west    float64
+	MapName string
+	North   float64
+	South   float64
+	East    float64
+	West    float64
 }
 
 func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, error) {
@@ -61,23 +61,23 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 	}
 
 	for _, viewConfig := range viewConfigs {
-		logger.Info("Loading view", "viewName", viewConfig.mapName)
-		baseTexture, err := image.LoadTexture(screenRenderer, getResourcePath(viewConfig.mapName, baseMapFile))
+		logger.Info("Loading", "viewName", viewConfig.MapName)
+		baseTexture, err := image.LoadTexture(screenRenderer, getResourcePath(viewConfig.MapName, baseMapFile))
 		if err != nil {
 			return nil, err
 		}
 
 		baseMap := &BaseMap{
 			Tex:    baseTexture,
-			SWGeo:  RealWorldPosition{viewConfig.west, viewConfig.south},
-			NEGeo:  RealWorldPosition{viewConfig.east, viewConfig.north},
+			SWGeo:  RealWorldPosition{viewConfig.West, viewConfig.South},
+			NEGeo:  RealWorldPosition{viewConfig.East, viewConfig.North},
 			width:  float64(screenWidth),
 			height: float64(screenHeight),
 		}
 
 		viewSet.Views = append(viewSet.Views, &View{
 			BaseMap:        baseMap,
-			ViewName:       viewConfig.mapName,
+			ViewName:       viewConfig.MapName,
 			screenRenderer: screenRenderer,
 		})
 	}
