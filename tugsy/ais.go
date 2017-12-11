@@ -110,7 +110,7 @@ func (router *RemoteAISServer) start() {
 		timeoutSleep := time.Duration(connRetryTimeoutSecs) * time.Second
 		for MachineAndProcessState.running {
 			if router.conn != nil {
-				logger.Error("Connection broken", "host", router.Host, "retrying in", connRetryTimeoutSecs)
+				logger.Warn("Connection broken", "host", router.Host, "retrying in", connRetryTimeoutSecs)
 				time.Sleep(timeoutSleep)
 			}
 
