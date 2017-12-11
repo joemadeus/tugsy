@@ -177,9 +177,9 @@ func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
 
 type translateToPointsFunc func(positionReports []Positionable)
 
-// Returns a slice with all the position reports, sorted by time received ascending, or nil
-// if the given MMSI is unknown
-func (aisData *AISData) GetPositionReports(mmsi uint32, translateFunc translateToPointsFunc) bool {
+// Executes the given translation function on all the position reports for the given
+// MMSI, returning true if the MMSI is known and false otherwise
+func (aisData *AISData) TranslatePositionReports(mmsi uint32, translateFunc translateToPointsFunc) bool {
 	aisData.Lock()
 	history, ok := aisData.GetShipHistory(mmsi)
 	aisData.Unlock()
