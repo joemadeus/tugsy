@@ -12,6 +12,7 @@ import (
 
 const (
 	connRetryTimeoutSecs = 10 // How many seconds to sleep after a timeout
+	connRetryAttempts    = 10 // How many times to try a connection before failing it
 	readDeadlineSecs     = 15
 )
 
@@ -75,11 +76,11 @@ type RemoteAISServer struct {
 	inStrings chan string
 	Decoded   chan aislib.Message
 	Failed    chan aislib.FailedSentence
-	conn      net.Conn
 
-	SourceName string
-	Host       string
-	Port       int
+	SourceName    string
+	HostColonPort string
+	conn          net.Conn
+	connAttempts  uint
 }
 
 func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.FailedSentence, config *Config) ([]*RemoteAISServer, error) {
@@ -103,29 +104,38 @@ func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.
 }
 
 func (router *RemoteAISServer) start() {
-	decoded := make(chan aislib.Message)
-	go aislib.Router(router.inStrings, decoded, router.Failed)
+	go aislib.Router(router.inStrings, router.Decoded, router.Failed)
 
 	go func() {
 		timeoutSleep := time.Duration(connRetryTimeoutSecs) * time.Second
 		for MachineAndProcessState.running {
-			if router.conn != nil {
-				logger.Warn("Connection broken", "host", router.Host, "retrying in", connRetryTimeoutSecs)
-				time.Sleep(timeoutSleep)
-			}
-
-			serverAddr, err := net.ResolveTCPAddr("tcp", router.Host)
+			serverAddr, err := net.ResolveTCPAddr("tcp", router.HostColonPort)
 			if err != nil {
-				logger.Error("Could not resolve the AIS host", "error", err, "host", router.Host, "retrying in", connRetryTimeoutSecs)
+				logger.Warn("Could not resolve an AIS host", "error", err, "host", router.HostColonPort, "retrying in", connRetryTimeoutSecs)
+				router.connAttempts++
+				if router.connAttempts > connRetryAttempts {
+					logger.Error("Failing this AIS server", "host", router.HostColonPort)
+					return
+				}
+				time.Sleep(timeoutSleep)
 				continue
 			}
+			logger.Info("Resolved", "host", router.HostColonPort)
 
 			router.conn, err = net.DialTCP("tcp", nil, serverAddr)
 			if err != nil {
-				logger.Error("Could not connect to the AIS host", "error", err, "host", router.Host, "retrying in", connRetryTimeoutSecs)
+				logger.Warn("Could not connect to an AIS host", "error", err, "host", router.HostColonPort, "retrying in", connRetryTimeoutSecs)
+				router.connAttempts++
+				if router.connAttempts > connRetryAttempts {
+					logger.Error("Failing this AIS server", "host", router.HostColonPort)
+					return
+				}
+				time.Sleep(timeoutSleep)
 				continue
 			}
-			defer router.conn.Close()
+			logger.Info("Dialed", "host", router.HostColonPort)
+
+			router.connAttempts = 0
 
 			connbuf := bufio.NewScanner(router.conn)
 			connbuf.Split(bufio.ScanLines)
@@ -133,6 +143,9 @@ func (router *RemoteAISServer) start() {
 				router.inStrings <- connbuf.Text()
 				router.conn.SetReadDeadline(time.Now().Add(readDeadlineSecs * time.Second))
 			}
+			router.conn.Close()
+			logger.Warn("Connection broken/not established", "host", router.HostColonPort, "retrying in", connRetryTimeoutSecs)
+			time.Sleep(timeoutSleep)
 		}
 		logger.Info("Router reconnect loop exiting", "running", MachineAndProcessState.running)
 	}()
@@ -143,7 +156,7 @@ func (router *RemoteAISServer) stop() error {
 }
 
 func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, failed chan aislib.FailedSentence) {
-	logger.Info("Starting AIS loop for " + router.SourceName)
+	logger.Info("Starting AIS loop ", "source", router.SourceName)
 	for {
 		select {
 		case message := <-decoded:
@@ -151,50 +164,55 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 			case 1, 2, 3:
 				t, err := aislib.DecodeClassAPositionReport(message.Payload)
 				if err != nil {
-					logger.Error("Decoding class A report", "err", err)
+					logger.Warn("Decoding class A report", "err", err)
 					break
 				}
 				report := &SourcedClassAPositionReport{t, SourceAndTime{router.SourceName, time.Now()}}
+				logger.Trace("New type A position", "position", report)
 				MachineAndProcessState.TheData.AddPosition(report)
 
 			case 4:
 				t, err := aislib.DecodeBaseStationReport(message.Payload)
 				if err != nil {
-					logger.Error("Decoding base station report", "err", err)
+					logger.Warn("Decoding base station report", "err", err)
 					break
 				}
 				report := &SourcedBaseStationReport{t, SourceAndTime{router.SourceName, time.Now()}}
+				logger.Trace("New base station data", "data", report)
 				MachineAndProcessState.TheData.UpdateBaseStationReport(report)
 
 			case 5:
 				t, err := aislib.DecodeStaticVoyageData(message.Payload)
 				if err != nil {
-					logger.Error("Decoding voyage data", "err", err)
+					logger.Warn("Decoding voyage data", "err", err)
 					break
 				}
 				report := &SourcedStaticVoyageData{t, SourceAndTime{router.SourceName, time.Now()}}
+				logger.Trace("New voyage data", "data", report)
 				MachineAndProcessState.TheData.UpdateStaticVoyageData(report)
 
 			case 8:
 				t, err := aislib.DecodeBinaryBroadcast(message.Payload)
 				if err != nil {
-					logger.Error("Decoding binary broadcast", "err", err)
+					logger.Warn("Decoding binary broadcast", "err", err)
 					break
 				}
 				report := &SourcedBinaryBroadcast{t, SourceAndTime{router.SourceName, time.Now()}}
+				logger.Trace("New binary broadcast", "data", report)
 				MachineAndProcessState.TheData.UpdateBinaryBroadcast(report)
 
 			case 18:
 				t, err := aislib.DecodeClassBPositionReport(message.Payload)
 				if err != nil {
-					logger.Error("Decoding class B report", "err", err)
+					logger.Warn("Decoding class B report", "err", err)
 					break
 				}
 				report := &SourcedClassBPositionReport{t, SourceAndTime{router.SourceName, time.Now()}}
+				logger.Trace("New type B position", "position", report)
 				MachineAndProcessState.TheData.AddPosition(report)
 
 			default:
-				logger.Debug("Unsupported message type %2d", message.Type)
+				logger.Debug("Unsupported message type", "type", message.Type)
 			}
 
 		case problematic := <-failed:
