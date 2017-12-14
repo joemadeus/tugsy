@@ -15,7 +15,7 @@ type ShipHistory struct {
 	positions  []Positionable
 	voyagedata *SourcedStaticVoyageData
 	dirty      bool
-	*sync.Mutex
+	sync.Mutex
 }
 
 func NewShipHistory() ShipHistory {
@@ -152,7 +152,7 @@ func (aisData *AISData) PrunePositions() {
 func (aisData *AISData) GetHistoryMMSIs() []uint32 {
 	aisData.Lock()
 	defer aisData.Unlock()
-	mmsis := make([]uint32, 0, len(aisData.mmsiHistories))
+	mmsis := make([]uint32, len(aisData.mmsiHistories))
 	i := 0
 	for mmsi := range aisData.mmsiHistories {
 		mmsis[i] = mmsi

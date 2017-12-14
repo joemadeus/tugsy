@@ -42,6 +42,8 @@ func run() int {
 		return 1
 	}
 
+	MachineAndProcessState.running = true
+
 	logger.Info("Loading the AIS routers")
 	decoded := make(chan aislib.Message)
 	failed := make(chan aislib.FailedSentence)
@@ -62,14 +64,19 @@ func run() int {
 		}
 	}()
 
-	MachineAndProcessState.TheData = NewAISData()
-	logger.Info("Starting the position culling loop")
-	go MachineAndProcessState.TheData.PrunePositions()
+	logger.Info("Starting the router maintenance loop")
+	for _, r := range routers {
+		r.start()
+	}
 
 	logger.Info("Starting the AIS update loops")
 	for _, r := range routers {
 		go r.DecodePositions(decoded, failed)
 	}
+
+	MachineAndProcessState.TheData = NewAISData()
+	logger.Info("Starting the position culling loop")
+	go MachineAndProcessState.TheData.PrunePositions()
 
 	logger.Info("Initializing image.PNG")
 	pngInit := image.Init(image.INIT_PNG)
@@ -127,7 +134,6 @@ func run() int {
 	signal.Notify(signalChan, os.Interrupt)
 
 	logger.Info("Starting the UI loop")
-	MachineAndProcessState.running = true
 	// set this to dirty so we display the initial view
 	MachineAndProcessState.TheData.dirty = true
 	for MachineAndProcessState.running {
