@@ -139,7 +139,7 @@ func (view *View) Display() error {
 		var currentPosition sdl.Point
 		var sdlPoints []sdl.Point
 		translatePositionFunc := func(positionReports []Positionable) {
-			sdlPoints := make([]sdl.Point, len(positionReports))
+			sdlPoints = make([]sdl.Point, len(positionReports))
 			for i, positionReport := range positionReports {
 				realWorldPosition := RealWorldPosition{
 					X: positionReport.GetPositionReport().Lat,
@@ -161,7 +161,7 @@ func (view *View) Display() error {
 		}
 
 		if logger.IsTrace() {
-			logger.Trace("Rendering frame", "point count", len(sdlPoints))
+			logger.Trace("Rendering frame", "mmsi", mmsi, "point count", len(sdlPoints))
 		}
 
 		view.screenRenderer.SetDrawColor(trackLinesR, trackLinesG, trackLinesB, sdl.ALPHA_OPAQUE)
