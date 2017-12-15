@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 
+	"fmt"
+
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -137,7 +139,7 @@ func (view *View) Display() error {
 		var currentPosition sdl.Point
 		var sdlPoints []sdl.Point
 		translatePositionFunc := func(positionReports []Positionable) {
-			sdlPoints := make([]sdl.Point, 0, len(positionReports))
+			sdlPoints := make([]sdl.Point, len(positionReports))
 			for i, positionReport := range positionReports {
 				realWorldPosition := RealWorldPosition{
 					X: positionReport.GetPositionReport().Lat,
@@ -154,8 +156,12 @@ func (view *View) Display() error {
 
 		ok := MachineAndProcessState.TheData.TranslatePositionReports(mmsi, translatePositionFunc)
 		if ok == false {
-			logger.Info("A ShipData was removed before we could render it", "mmsi", mmsi)
+			logger.Info("A ShipData has no points or was removed", "mmsi", fmt.Sprintf("%d", mmsi))
 			continue
+		}
+
+		if logger.IsTrace() {
+			logger.Trace("Rendering frame", "point count", len(sdlPoints))
 		}
 
 		view.screenRenderer.SetDrawColor(trackLinesR, trackLinesG, trackLinesB, sdl.ALPHA_OPAQUE)
