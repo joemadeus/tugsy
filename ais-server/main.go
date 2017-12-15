@@ -13,7 +13,7 @@ import (
 
 var (
 	positionFile     = flag.String("f", "", "The name of the file to read")
-	maxPositionSleep = flag.Int("s", 10, "The max number of seconds to sleep between positions")
+	maxPositionSleep = flag.Int("s", 3, "The max number of seconds to sleep between positions")
 	positionChan     = make(chan string)
 )
 
