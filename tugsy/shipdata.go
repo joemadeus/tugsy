@@ -100,8 +100,11 @@ func (aisData *AISData) getOrCreateShipHistory(mmsi uint32) *ShipHistory {
 
 func (aisData *AISData) UpdateStaticVoyageData(data *SourcedStaticVoyageData) {
 	aisData.Lock()
-	defer aisData.Unlock()
-	history := aisData.mmsiHistories[data.MMSI]
+	history := aisData.getOrCreateShipHistory(data.MMSI)
+	aisData.Unlock()
+
+	history.Lock()
+	defer history.Unlock()
 	history.voyagedata = data
 }
 
@@ -125,7 +128,7 @@ func (aisData *AISData) PrunePositions() {
 	for {
 		select {
 		case <-cullChan:
-			logger.Debug("Culling positions")
+			logger.Trace("Culling positions")
 			// make a copy of the keyset so we don't have to maintain the lock on aisData.
 			// doing so means potentially examining only a subset of all the shipdata, but
 			// that's alright: this isn't toooo important a process & we'll get to the ones
@@ -196,6 +199,12 @@ func (aisData *AISData) TranslatePositionReports(mmsi uint32, translateFunc tran
 
 	history.Lock()
 	defer history.Unlock()
+
+	if len(history.positions) == 0 {
+		logger.Info("No positions", "mmsi", mmsi)
+		return false
+	}
+
 	translateFunc(history.positions)
 	history.dirty = false
 	return true
