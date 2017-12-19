@@ -14,7 +14,7 @@ const (
 	baseMapFile = "/base.png"
 
 	screenWidth  = 480
-	screenHeight = 600
+	screenHeight = 760
 	screenTitle  = "Tugsy"
 
 	trackLinesR = 192
@@ -142,8 +142,8 @@ func (view *View) Display() error {
 			sdlPoints = make([]sdl.Point, len(positionReports))
 			for i, positionReport := range positionReports {
 				realWorldPosition := RealWorldPosition{
-					X: positionReport.GetPositionReport().Lat,
-					Y: positionReport.GetPositionReport().Lon,
+					X: positionReport.GetPositionReport().Lon,
+					Y: positionReport.GetPositionReport().Lat,
 				}
 				baseMapPosition := view.getBaseMapPosition(realWorldPosition)
 				sdlPoints[i] = sdl.Point{
@@ -165,11 +165,21 @@ func (view *View) Display() error {
 		}
 
 		view.screenRenderer.SetDrawColor(trackLinesR, trackLinesG, trackLinesB, sdl.ALPHA_OPAQUE)
-		view.screenRenderer.DrawLines(sdlPoints)
+		//err := view.screenRenderer.DrawLines(sdlPoints)
+		//if err != nil {
+		//	logger.Warn("rendering track lines", "error", err)
+		//}
+		//
+		//view.screenRenderer.SetDrawColor(trackPointsR, trackPointsG, trackPointsB, sdl.ALPHA_OPAQUE)
+		//err = view.screenRenderer.DrawPoints(sdlPoints)
+		//if err != nil {
+		//	logger.Warn("rendering track points", "error", err)
+		//}
 
-		view.screenRenderer.SetDrawColor(trackPointsR, trackPointsG, trackPointsB, sdl.ALPHA_OPAQUE)
-		view.screenRenderer.DrawPoints(sdlPoints)
-		view.screenRenderer.DrawPoint(int(currentPosition.X), int(currentPosition.Y))
+		err = view.screenRenderer.FillRect(&sdl.Rect{int32(currentPosition.X) - 5, int32(currentPosition.Y) - 5, 10, 10})
+		if err != nil {
+			logger.Warn("rendering current position", "error", err)
+		}
 	}
 
 	view.screenRenderer.Present()
@@ -182,7 +192,7 @@ func (view *View) Display() error {
 func (view *View) getBaseMapPosition(position RealWorldPosition) BaseMapPosition {
 	return BaseMapPosition{
 		(position.X - view.SWGeo.X) / (view.NEGeo.X - view.SWGeo.X) * view.width,
-		(position.Y - view.SWGeo.Y) / (view.NEGeo.Y - view.SWGeo.Y) * view.height,
+		view.height - (position.Y-view.SWGeo.Y)/(view.NEGeo.Y-view.SWGeo.Y)*view.height,
 	}
 }
 
