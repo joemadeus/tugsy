@@ -26,7 +26,5 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 
-	//setDefaults(cfg)
-
 	return cfg, nil
 }

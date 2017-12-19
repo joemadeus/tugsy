@@ -20,11 +20,17 @@ import (
 // * UI loop
 
 const (
-	appConfig        = "./config"
+	resourcesDir = "/Resources"
+	osxAppDir    = "/Applications/Tugsy.app"
+	devAppDir    = "./"
+
 	targetFPS uint32 = 60
 )
 
-var MachineAndProcessState State
+var (
+	MachineAndProcessState State
+	appConfig              = []string{osxAppDir + resourcesDir, devAppDir + resourcesDir}
+)
 
 type State struct {
 	TheDisplay *View
@@ -35,7 +41,19 @@ type State struct {
 func run() int {
 	logger.Info("Starting Tugsy")
 	logger.Info("Loading config")
-	config, err := LoadConfig(appConfig)
+	var resources string
+	for _, configDir := range appConfig {
+		if exists(configDir) {
+			resources = configDir
+		}
+	}
+
+	if resources == "" {
+		logger.Fatal("Could not locate a resources dir")
+		return -128
+	}
+
+	config, err := LoadConfig(resources)
 	if err != nil {
 		logger.Fatal("Could not load the config", "err", err)
 		MachineAndProcessState.running = false
@@ -105,11 +123,12 @@ func run() int {
 		return 1
 	}
 	defer screenRenderer.Destroy()
+	screenRenderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 
 	logger.Info("Initializing resources")
 	viewSet, err := ViewSetFromConfig(screenRenderer, config)
 	if err != nil {
-		logger.Error("Could not load resources", "err", err)
+		logger.Error("Could not load views from config", "err", err)
 		MachineAndProcessState.running = false
 		return 1
 	}
@@ -177,6 +196,17 @@ func run() int {
 	}
 
 	return returnCode
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	return true
 }
 
 func main() {
