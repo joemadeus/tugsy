@@ -1,9 +1,0 @@
-routers:
-  - sourceName: "local"
-    hostColonPort: "127.0.0.1:10110"
-views:
-  - mapName: "pvd_harbor"
-    north: 41.816851
-    south: 41.778544
-    east: -71.365609
-    west: -71.406421
