@@ -41,19 +41,19 @@ type State struct {
 func run() int {
 	logger.Info("Starting Tugsy")
 	logger.Info("Loading config")
-	var resources string
+	var resourceDir string
 	for _, configDir := range appConfig {
 		if exists(configDir) {
-			resources = configDir
+			resourceDir = configDir
 		}
 	}
 
-	if resources == "" {
+	if resourceDir == "" {
 		logger.Fatal("Could not locate a resources dir")
 		return -128
 	}
 
-	config, err := LoadConfig(resources)
+	config, err := LoadConfig(resourceDir)
 	if err != nil {
 		logger.Fatal("Could not load the config", "err", err)
 		MachineAndProcessState.running = false
@@ -126,7 +126,7 @@ func run() int {
 	screenRenderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 
 	logger.Info("Initializing resources")
-	viewSet, err := ViewSetFromConfig(screenRenderer, config)
+	viewSet, err := ViewSetFromConfig(screenRenderer, resourceDir, config)
 	if err != nil {
 		logger.Error("Could not load views from config", "err", err)
 		MachineAndProcessState.running = false
