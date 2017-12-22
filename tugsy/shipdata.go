@@ -185,11 +185,9 @@ func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
 	}
 }
 
-type translateToPointsFunc func(positionReports []Positionable)
-
 // Executes the given translation function on all the position reports for the given
 // MMSI, returning true if the MMSI is known and false otherwise
-func (aisData *AISData) TranslatePositionReports(mmsi uint32, translateFunc translateToPointsFunc) bool {
+func (aisData *AISData) RenderPositionReports(mmsi uint32, renderPath, renderCurrentPosition Render) bool {
 	// lock held in GetShipHistory
 	history, ok := aisData.GetShipHistory(mmsi)
 
@@ -205,7 +203,9 @@ func (aisData *AISData) TranslatePositionReports(mmsi uint32, translateFunc tran
 		return false
 	}
 
-	translateFunc(history.positions)
+	renderPath(history)
+	renderCurrentPosition(history)
+
 	history.dirty = false
 	return true
 }

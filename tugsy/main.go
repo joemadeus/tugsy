@@ -20,16 +20,11 @@ import (
 // * UI loop
 
 const (
-	resourcesDir = "/Resources"
-	osxAppDir    = "/Applications/Tugsy.app"
-	devAppDir    = "./"
-
-	targetFPS uint32 = 60
+	targetFPS uint32 = 30
 )
 
 var (
 	MachineAndProcessState State
-	appConfig              = []string{osxAppDir + resourcesDir, devAppDir + resourcesDir}
 )
 
 type State struct {
@@ -41,19 +36,7 @@ type State struct {
 func run() int {
 	logger.Info("Starting Tugsy")
 	logger.Info("Loading config")
-	var resourceDir string
-	for _, configDir := range appConfig {
-		if exists(configDir) {
-			resourceDir = configDir
-		}
-	}
-
-	if resourceDir == "" {
-		logger.Fatal("Could not locate a resources dir")
-		return -128
-	}
-
-	config, err := LoadConfig(resourceDir)
+	config, err := LoadConfig()
 	if err != nil {
 		logger.Fatal("Could not load the config", "err", err)
 		MachineAndProcessState.running = false
@@ -126,7 +109,7 @@ func run() int {
 	screenRenderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 
 	logger.Info("Initializing resources")
-	viewSet, err := ViewSetFromConfig(screenRenderer, resourceDir, config)
+	viewSet, err := ViewSetFromConfig(screenRenderer, config)
 	if err != nil {
 		logger.Error("Could not load views from config", "err", err)
 		MachineAndProcessState.running = false

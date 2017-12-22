@@ -5,35 +5,24 @@ import (
 
 	"fmt"
 
+	"github.com/andmarios/aislib"
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 const (
-	resDir      = "./res"
 	baseMapFile = "/base.png"
 
 	screenWidth  = 480
 	screenHeight = 760
 	screenTitle  = "Tugsy"
-
-	trackLinesR = 192
-	trackLinesG = 192
-	trackLinesB = 0
-
-	trackPointsR = 128
-	trackPointsG = 128
-	trackPointsB = 0
 )
 
 var NoViewConfigFound = errors.New("could not find view configs")
 
-// Returns a path to a resource in the given view
-func getResourcePath(viewName string, pngResource string) string {
-	return resDir + "/" + viewName + pngResource
-}
-
 type ViewSet struct {
+	resourceDir string
+
 	index int
 	Views []*View
 }
@@ -64,7 +53,7 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 
 	for _, viewConfig := range viewConfigs {
 		logger.Info("Loading", "viewName", viewConfig.MapName)
-		baseTexture, err := image.LoadTexture(screenRenderer, getResourcePath(viewConfig.MapName, baseMapFile))
+		baseTexture, err := image.LoadTexture(screenRenderer, viewSet.getResourcePath(viewConfig.MapName, baseMapFile))
 		if err != nil {
 			return nil, err
 		}
@@ -78,13 +67,20 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 		}
 
 		viewSet.Views = append(viewSet.Views, &View{
-			BaseMap:        baseMap,
-			ViewName:       viewConfig.MapName,
-			screenRenderer: screenRenderer,
+			BaseMap:                   baseMap,
+			ViewName:                  viewConfig.MapName,
+			screenRenderer:            screenRenderer,
+			renderCurrentPositionFunc: &MarkCurrentPositionSimple{},
+			renderPathFunc:            &MarkPathSimple{},
 		})
 	}
 
 	return viewSet, nil
+}
+
+// Returns a path to a resource in the given view
+func (viewSet *ViewSet) getResourcePath(viewName string, pngResource string) string {
+	return viewSet.resourceDir + "/" + viewName + pngResource
 }
 
 func (viewSet *ViewSet) currentView() *View {
@@ -113,6 +109,8 @@ type View struct {
 	*BaseMap
 	ViewName       string
 	screenRenderer *sdl.Renderer
+
+	renderPathFunc, renderCurrentPositionFunc RenderStyle
 }
 
 // Clears the renderer and redisplays the base map and all tracks
@@ -136,49 +134,14 @@ func (view *View) Display() error {
 	}
 
 	for _, mmsi := range MachineAndProcessState.TheData.GetHistoryMMSIs() {
-		var currentPosition sdl.Point
-		var sdlPoints []sdl.Point
-		translatePositionFunc := func(positionReports []Positionable) {
-			sdlPoints = make([]sdl.Point, len(positionReports))
-			for i, positionReport := range positionReports {
-				realWorldPosition := RealWorldPosition{
-					X: positionReport.GetPositionReport().Lon,
-					Y: positionReport.GetPositionReport().Lat,
-				}
-				baseMapPosition := view.getBaseMapPosition(realWorldPosition)
-				sdlPoints[i] = sdl.Point{
-					X: int32(baseMapPosition.X + 0.5),
-					Y: int32(baseMapPosition.Y + 0.5),
-				}
-				currentPosition = sdlPoints[i]
-			}
-		}
+		ok := MachineAndProcessState.TheData.RenderPositionReports(
+			mmsi,
+			view.renderPathFunc.Render(view),
+			view.renderCurrentPositionFunc.Render(view))
 
-		ok := MachineAndProcessState.TheData.TranslatePositionReports(mmsi, translatePositionFunc)
 		if ok == false {
 			logger.Info("A ShipData has no points or was removed", "mmsi", fmt.Sprintf("%d", mmsi))
 			continue
-		}
-
-		if logger.IsTrace() {
-			logger.Trace("Rendering frame", "mmsi", mmsi, "point count", len(sdlPoints))
-		}
-
-		view.screenRenderer.SetDrawColor(trackLinesR, trackLinesG, trackLinesB, sdl.ALPHA_OPAQUE)
-		//err := view.screenRenderer.DrawLines(sdlPoints)
-		//if err != nil {
-		//	logger.Warn("rendering track lines", "error", err)
-		//}
-		//
-		//view.screenRenderer.SetDrawColor(trackPointsR, trackPointsG, trackPointsB, sdl.ALPHA_OPAQUE)
-		//err = view.screenRenderer.DrawPoints(sdlPoints)
-		//if err != nil {
-		//	logger.Warn("rendering track points", "error", err)
-		//}
-
-		err = view.screenRenderer.FillRect(&sdl.Rect{int32(currentPosition.X) - 5, int32(currentPosition.Y) - 5, 10, 10})
-		if err != nil {
-			logger.Warn("rendering current position", "error", err)
 		}
 	}
 
@@ -189,10 +152,10 @@ func (view *View) Display() error {
 
 // getBaseMapPosition returns the given real world position on the view's
 // base map using a simple linear approximation
-func (view *View) getBaseMapPosition(position RealWorldPosition) BaseMapPosition {
+func (view *View) getBaseMapPosition(position *aislib.PositionReport) BaseMapPosition {
 	return BaseMapPosition{
-		(position.X - view.SWGeo.X) / (view.NEGeo.X - view.SWGeo.X) * view.width,
-		view.height - (position.Y-view.SWGeo.Y)/(view.NEGeo.Y-view.SWGeo.Y)*view.height,
+		(position.Lon - view.SWGeo.X) / (view.NEGeo.X - view.SWGeo.X) * view.width,
+		view.height - (position.Lat-view.SWGeo.Y)/(view.NEGeo.Y-view.SWGeo.Y)*view.height,
 	}
 }
 
