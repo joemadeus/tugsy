@@ -70,7 +70,7 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 			BaseMap:                   baseMap,
 			ViewName:                  viewConfig.MapName,
 			screenRenderer:            screenRenderer,
-			renderCurrentPositionFunc: &MarkCurrentPositionSimple{},
+			renderCurrentPositionFunc: &CurrentPositionSimple{},
 			renderPathFunc:            &MarkPathSimple{},
 		})
 	}
