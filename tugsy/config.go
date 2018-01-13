@@ -8,6 +8,7 @@ import (
 
 const (
 	resourcesDir = "/Resources"
+	spritesDir   = resourcesDir + "/sprites"
 	osxAppDir    = "/Applications/Tugsy.app"
 	devAppDir    = "./"
 )

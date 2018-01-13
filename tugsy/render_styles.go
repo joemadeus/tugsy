@@ -19,16 +19,64 @@ func toRect(position *BaseMapPosition, pixSquare int32) *sdl.Rect {
 	}
 }
 
-func shipTypeToColorMarker(history *ShipHistory) *sdl.Color {
+// Returns the SDL color for the given hue (HSV) value, or nil if unknown
+func hueToSDLColor(hueVal uint8) *sdl.Color {
+	switch hueVal {
+	case 0:
+		return &sdl.Color{R: 128, G: 128, B: 128, A: 0}
+	case 10:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 30:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 50:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 70:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 90:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 110:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 130:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 150:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 170:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 190:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 210:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 230:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 250:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 270:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 290:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 310:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 330:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	case 350:
+		return &sdl.Color{R: 0, G: 0, B: 0, A: 0}
+	default:
+		return nil
+	}
+}
+
+// Maps a ship type to a hue, or to -1 if the type is unknown or it should be
+// mapped that way anyway
+func shipTypeToHue(history *ShipHistory) uint8 {
 	switch {
 	case history.voyagedata == nil:
-		positionColor = unknown
+		return -1
 	case history.voyagedata.ShipType <= 29:
-		positionColor = unknown
+		return -1
 	case history.voyagedata.ShipType == 30:
 		// fishing
 	case history.voyagedata.ShipType <= 32:
-		// towing
+		// towing -- VIOLET: H310
 	case history.voyagedata.ShipType <= 34:
 		// diving/dredging/underwater
 	case history.voyagedata.ShipType == 35:
@@ -38,36 +86,39 @@ func shipTypeToColorMarker(history *ShipHistory) *sdl.Color {
 	case history.voyagedata.ShipType == 37:
 		// pleasure craft
 	case history.voyagedata.ShipType <= 39:
-		positionColor = unknown
+		return -1
 	case history.voyagedata.ShipType <= 49:
 		// high speed craft
 	case history.voyagedata.ShipType == 50:
-		// pilot vessel
+		// pilot vessel -- ORANGE: H50
 	case history.voyagedata.ShipType == 51:
 		// search & rescue
 	case history.voyagedata.ShipType == 52:
-		// tug
+		// tug -- RED: H10
 	case history.voyagedata.ShipType == 53:
-		// port tender
+		// port tender -- ORANGE: H50
 	case history.voyagedata.ShipType == 54:
-		positionColor = unknown // "anti pollution equipment"
+		return -1 // "anti pollution equipment"
 	case history.voyagedata.ShipType == 55:
 		// law enforcement
 	case history.voyagedata.ShipType <= 57:
-		positionColor = unknown
+		return -1
 	case history.voyagedata.ShipType == 58:
-		// medical trnsport
+		// medical transport
 	case history.voyagedata.ShipType == 59:
 		// "noncombatant ship"
 	case history.voyagedata.ShipType <= 69:
-		// passenger
+		// passenger -- GREEN: H110
 	case history.voyagedata.ShipType <= 79:
-		// cargo, dark green
+		// cargo -- LIGHT BLUE: H190
 	case history.voyagedata.ShipType <= 89:
-		// tanker, light green
+		// tanker -- DARK BLUE: H250
 	case history.voyagedata.ShipType <= 99:
-		positionColor = unknown // other
+		return -1 // other
 	}
+
+	logger.Warn("Mapping an unhandled ship type", "type num", history.voyagedata.ShipType)
+	return -1
 }
 
 type NullRenderStyle struct{}
@@ -76,36 +127,17 @@ func (style *NullRenderStyle) Render(view *View) Render {
 	return func(history *ShipHistory) {}
 }
 
-type CurrentPositionSimple struct{}
-
-func (style *CurrentPositionSimple) Render(view *View) Render {
-	currentPositionColor := sdl.Color{128, 128, 0, 0}
-	currentPositionSize := int32(10)
-	return func(history *ShipHistory) {
-		currentPosition := history.positions[len(history.positions)-1]
-		baseMapPosition := view.getBaseMapPosition(currentPosition.GetPositionReport())
-
-		view.screenRenderer.SetDrawColor(currentPositionColor.R, currentPositionColor.G, currentPositionColor.B, sdl.ALPHA_OPAQUE)
-		err := view.screenRenderer.FillRect(toRect(&baseMapPosition, currentPositionSize))
-		if err != nil {
-			logger.Warn("rendering CurrentPositionSimple", "error", err)
-		}
-	}
-}
-
 type CurrentPositionByType struct{}
 
 func (style *CurrentPositionByType) Render(view *View) Render {
-	unknown := sdl.Color{128, 128, 128, 0}
-	var positionColor sdl.Color
 	currentPositionSize := int32(10)
-
 	return func(history *ShipHistory) {
 
 		currentPosition := history.positions[len(history.positions)-1]
 		baseMapPosition := view.getBaseMapPosition(currentPosition.GetPositionReport())
 
-		view.screenRenderer.SetDrawColor(positionColor.R, positionColor.G, positionColor.B, sdl.ALPHA_OPAQUE)
+		sdlColor := hueToSDLColor(shipTypeToHue(history))
+		view.screenRenderer.SetDrawColor(sdlColor.R, sdlColor.G, sdlColor.B, sdl.ALPHA_OPAQUE)
 		err := view.screenRenderer.FillRect(toRect(&baseMapPosition, currentPositionSize))
 		if err != nil {
 			logger.Warn("rendering CurrentPositionByType", "error", err)
@@ -113,14 +145,14 @@ func (style *CurrentPositionByType) Render(view *View) Render {
 	}
 }
 
-type MarkPathSimple struct{}
+type MarkPathByType struct{}
 
-func (style *MarkPathSimple) Render(view *View) Render {
-	defaultTrackLinesColor := sdl.Color{192, 192, 0, 0}
-	defaultTrackPointsColor := sdl.Color{128, 128, 0, 0}
+func (style *MarkPathByType) Render(view *View) Render {
 	trackPointsSize := int32(4)
+	trackAlpha := uint8(128)
 
 	return func(history *ShipHistory) {
+		pathColor := hueToSDLColor(shipTypeToHue(history))
 		sdlPoints := make([]sdl.Point, len(history.positions), len(history.positions))
 		sdlRects := make([]sdl.Rect, len(history.positions), len(history.positions))
 
@@ -138,16 +170,15 @@ func (style *MarkPathSimple) Render(view *View) Render {
 			}
 		}
 
-		view.screenRenderer.SetDrawColor(defaultTrackLinesColor.R, defaultTrackLinesColor.G, defaultTrackLinesColor.B, sdl.ALPHA_OPAQUE)
+		view.screenRenderer.SetDrawColor(pathColor.R, pathColor.G, pathColor.B, trackAlpha)
 		err := view.screenRenderer.DrawLines(sdlPoints)
 		if err != nil {
-			logger.Warn("rendering track lines MarkPathSimple", "error", err)
+			logger.Warn("rendering track lines MarkPathByType", "error", err)
 		}
 
-		view.screenRenderer.SetDrawColor(defaultTrackPointsColor.R, defaultTrackPointsColor.G, defaultTrackPointsColor.B, sdl.ALPHA_OPAQUE)
 		err = view.screenRenderer.DrawRects(sdlRects)
 		if err != nil {
-			logger.Warn("rendering track points MarkPathSimple", "error", err)
+			logger.Warn("rendering track points MarkPathByType", "error", err)
 		}
 	}
 }

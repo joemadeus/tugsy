@@ -7,3 +7,13 @@ views:
     south: 41.769867
     east: -71.363937
     west: -71.405147
+sprites:
+  dots:
+    textureSource: "dots-normal.png"
+    spriteSize: 40
+  flags:
+    textureSource: "flags-normal.png"
+    spriteSize: 40
+  special:
+    textureSource: "special.png"
+    spriteSize: 40
