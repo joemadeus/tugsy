@@ -16,84 +16,91 @@ type SpriteSheet struct {
 	SpriteSize    int32
 }
 
-func (sheet *SpriteSheet) getSprite() {}
+func (sheet *SpriteSheet) getSourceRect(row, column int32) *sdl.Rect {
+	return &sdl.Rect{
+		H: sheet.SpriteSize,
+		W: sheet.SpriteSize,
+		X: column * sheet.SpriteSize,
+		Y: row * sheet.SpriteSize,
+	}
+}
 
 type Dots struct {
 	SpriteSheet
-	DotMap     map[uint8]int32      // a dot hue to its row number, zero based
-	SpecialMap map[string]int32     // a "special" string to its column
+	DotMap      map[Hue]int32  // a dot hue to its row number, zero based
+	ModifierMap map[string]int32 // a "modifier" string name to its column
 }
 
-func NewDots(screenRenderer *sdl.Renderer, config *Config, spritesDir string) (*Dots, error) {
+func NewDots(screenRenderer *sdl.Renderer) (*Dots, error) {
 	dots := &Dots{}
-	err := config.UnmarshalKey("sprites.dots", dots)
+	var err error
+	dots.Texture, err = image.LoadTexture(screenRenderer, getSpritePath(dots.TextureSource))
 	if err != nil {
 		return nil, err
 	}
 
-	dots.Texture, err = image.LoadTexture(screenRenderer, spritesDir+"/"+dots.TextureSource)
-	if err != nil {
-		return nil, err
-	}
+	dots.ModifierMap = make(map[string]int32)
+	dots.ModifierMap["normal"] = 0
+	dots.ModifierMap["lighter"] = 1
 
-	// TODO: Unfortunate mix of configuration and programmatic evaluation, here
-
-	dots.SpecialMap = make(map[string]uint8)
-	dots.SpecialMap["normal"] = 0
-	dots.SpecialMap["lighter"] = 1
-
-	dots.DotMap = make(map[uint8]uint8)
+	dots.DotMap = make(map[Hue]int32)
 	i := 0
 	for i <= 18 {
-		dots.DotMap[uint8(i*20+10)] = uint8(i)
+		dots.DotMap[Hue(i*20+10)] = int32(i)
 		i += 1
 	}
 
 	return dots, nil
 }
 
-func (dots *Dots) getSourceRect(hue uint8, special string) *sdl.Rect {
-	x, ok := dots.SpecialMap[special]
+func (dots *Dots) GetSprite(hue Hue, modifier string) (*sdl.Rect, *SpriteSheet, bool) {
+	row, ok := dots.DotMap[hue]
 	if ok == false {
-		x = 0 // default to a "normal" dot
+		logger.Warn("Hue is unknown", "Hue", hue)
+		return nil, nil, false
 	}
-	x *= dots.SpriteSize
 
-
-	return &sdl.Rect{
-		H: dots.SpriteSize,
-		W: dots.SpriteSize,
-		X: x,
+	column, ok := dots.ModifierMap[modifier]
+	if ok == false {
+		logger.Warn("Modifier is unknown", "modifier name", modifier)
+		return nil, nil, false
 	}
+
+	return dots.getSourceRect(row, column), &dots.SpriteSheet, true
 }
 
 type Special struct {
 	SpriteSheet
-	MarkerMap map[string]uint8 // the name of the sprite to its row number, zero based
+	MarkerMap map[string]int32 // the name of the sprite to its row number, zero based
 }
 
-func NewSpecial(screenRenderer *sdl.Renderer, config *Config, spritesDir string) (*Special, error) {
+func NewSpecial(screenRenderer *sdl.Renderer) (*Special, error) {
 	special := &Special{}
-	err := config.UnmarshalKey("sprites.dots", special)
-	if err != nil {
-		return nil, err
-	}
-
-	special.Texture, err = image.LoadTexture(screenRenderer, spritesDir+"/"+special.TextureSource)
+	var err error
+	special.Texture, err = image.LoadTexture(screenRenderer, getSpritePath(special.TextureSource))
 	if err != nil {
 		return nil, err
 	}
 
 	// TODO: could be set via config, instead
 
-	special.MarkerMap = make(map[string]uint8)
-	special.MarkerMap["hazard_a"] = uint8(0)
-	special.MarkerMap["hazard_b"] = uint8(1)
-	special.MarkerMap["hazard_c"] = uint8(2)
-	special.MarkerMap["hazard_d"] = uint8(3)
-	special.MarkerMap["unknown"] = uint8(4)
+	special.MarkerMap = make(map[string]int32)
+	special.MarkerMap["unknown"] = int32(0)
+	special.MarkerMap["hazard_a"] = int32(1)
+	special.MarkerMap["hazard_b"] = int32(2)
+	special.MarkerMap["hazard_c"] = int32(3)
+	special.MarkerMap["hazard_d"] = int32(4)
 
 	return special, nil
+}
+
+func (special *Special) GetSprite(spriteName string) (*sdl.Rect, *SpriteSheet, bool) {
+	row, ok := special.MarkerMap[spriteName]
+	if ok == false {
+		return nil, nil, false
+	}
+
+	return special.getSourceRect(row, 0), &special.SpriteSheet, true
 }
 
 type Flags struct {
