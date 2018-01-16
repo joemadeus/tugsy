@@ -1,16 +1,16 @@
 package main
 
 import (
-	"errors"
+	"os"
 
 	"github.com/spf13/viper"
 )
 
 const (
 	resourcesDir = "/Resources"
-	spritesDir   = resourcesDir + "/sprites"
+	spritesDir   = "/sprites"
 	osxAppDir    = "/Applications/Tugsy.app"
-	devAppDir    = "./"
+	devAppDir    = "."
 )
 
 type Config struct {
@@ -20,26 +20,9 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	cfg := &Config{viper.New()}
 
-	// First load config from environment variables.
-	// First load wins, so anything set in the environment takes precedence over files.
+	// Anything set in the environment takes precedence over files
 	cfg.AutomaticEnv()
-
-	// Next load config from files in /config. See https://github.com/spf13/viper#reading-config-files
-	// for details about how this works. The code below makes it look for a file at /config/config.XXX,
-	// where XXX can be one of a few different supported extensions.
-	appConfig := []string{osxAppDir + resourcesDir, devAppDir + resourcesDir}
-	var resourceDir string
-	for _, configDir := range appConfig {
-		if exists(configDir) {
-			resourceDir = configDir
-		}
-	}
-
-	if resourceDir == "" {
-		return nil, errors.New("Could not locate a resources dir")
-	}
-
-	cfg.AddConfigPath(resourceDir)
+	cfg.AddConfigPath(getResourcesDir())
 	cfg.SetConfigName("config")
 
 	err := cfg.ReadInConfig()
@@ -48,4 +31,21 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Returns the resources dir for the app, preferring the OSX dir over the dev dir
+func getResourcesDir() string {
+	if _, err := os.Stat(osxAppDir + resourcesDir); err == nil {
+		return osxAppDir + resourcesDir
+	} else if _, err := os.Stat(devAppDir + resourcesDir); err == nil {
+		return devAppDir + resourcesDir
+	} else {
+		logger.Fatal("Could not determine the base dir for the app")
+		return ""
+	}
+}
+
+// Returns a path to a sprite sheet
+func getSpritePath(pngResource string) string {
+	return getResourcesDir() + spritesDir + "/" + pngResource
 }
