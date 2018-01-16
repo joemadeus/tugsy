@@ -2,3 +2,5 @@
 /generate-bin
 .idea
 .DS_Store
+
+.nmea
