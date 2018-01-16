@@ -5,14 +5,14 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
-// Returns a path to a resource in the given view
-func getSpritePath(pngResource string) string {
-	return spritesDir + "/" + pngResource
-}
+const (
+	defaultSpriteSizePixels = 40
+	dotsSpritesFile         = "dots-normal.png"
+	specialSpritesFile      = "special.png"
+)
 
 type SpriteSheet struct {
 	*sdl.Texture
-	TextureSource string
 	SpriteSize    int32
 }
 
@@ -32,12 +32,15 @@ type Dots struct {
 }
 
 func NewDots(screenRenderer *sdl.Renderer) (*Dots, error) {
+	logger.Info("Loading sprites \"Dots\"")
 	dots := &Dots{}
 	var err error
-	dots.Texture, err = image.LoadTexture(screenRenderer, getSpritePath(dots.TextureSource))
+	dots.Texture, err = image.LoadTexture(screenRenderer, getSpritePath(dotsSpritesFile))
 	if err != nil {
 		return nil, err
 	}
+
+	dots.SpriteSize = defaultSpriteSizePixels
 
 	dots.ModifierMap = make(map[string]int32)
 	dots.ModifierMap["normal"] = 0
@@ -51,6 +54,10 @@ func NewDots(screenRenderer *sdl.Renderer) (*Dots, error) {
 	}
 
 	return dots, nil
+}
+
+func (dots *Dots) Teardown() {
+	dots.Texture.Destroy()
 }
 
 func (dots *Dots) GetSprite(hue Hue, modifier string) (*sdl.Rect, *SpriteSheet, bool) {
@@ -75,12 +82,15 @@ type Special struct {
 }
 
 func NewSpecial(screenRenderer *sdl.Renderer) (*Special, error) {
+	logger.Info("Loading sprites \"Special\"")
 	special := &Special{}
 	var err error
-	special.Texture, err = image.LoadTexture(screenRenderer, getSpritePath(special.TextureSource))
+	special.Texture, err = image.LoadTexture(screenRenderer, getSpritePath(specialSpritesFile))
 	if err != nil {
 		return nil, err
 	}
+
+	special.SpriteSize = defaultSpriteSizePixels
 
 	// TODO: could be set via config, instead
 
@@ -92,6 +102,10 @@ func NewSpecial(screenRenderer *sdl.Renderer) (*Special, error) {
 	special.MarkerMap["hazard_d"] = int32(4)
 
 	return special, nil
+}
+
+func (special *Special) Teardown() {
+	special.Texture.Destroy()
 }
 
 func (special *Special) GetSprite(spriteName string) (*sdl.Rect, *SpriteSheet, bool) {

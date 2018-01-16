@@ -9,6 +9,7 @@ const (
 	UnknownR   = 128
 	UnknownG   = 128
 	UnknownB   = 128
+	defaultDestSpriteSizePixels = 20
 )
 
 type Hue uint16
@@ -175,36 +176,12 @@ func (style *NullRenderStyle) Render(view *View) Render {
 	return func(history *ShipHistory) {}
 }
 
-type CurrentPositionByType struct{}
-
-func (style *CurrentPositionByType) Render(view *View) Render {
-	currentPositionSize := int32(10)
-	return func(history *ShipHistory) {
-
-		currentPosition := history.positions[len(history.positions)-1]
-		baseMapPosition := view.getBaseMapPosition(currentPosition.GetPositionReport())
-
-		hue := shipTypeToHue(history)
-		if hue == UnknownHue && logger.IsDebug() {
-			logger.Debug("Ship type is unknown")
-		}
-		r, g, b := hueToRGB(hue)
-		// TODO: Set opacity to 33% if older than a certain age
-		view.screenRenderer.SetDrawColor(r, g, b, sdl.ALPHA_OPAQUE)
-
-		err := view.screenRenderer.FillRect(toDestRect(&baseMapPosition, currentPositionSize))
-		if err != nil {
-			logger.Warn("rendering CurrentPositionByType", "error", err)
-		}
-	}
-}
-
-type CurrentPositionByTypeSprite struct {
+type CurrentPositionByType struct {
 	SpecialSprites *Special
 	DotSprites     *Dots
 }
 
-func NewCurrentPositionByTypeSprite(screenRenderer *sdl.Renderer) (*CurrentPositionByTypeSprite, error) {
+func NewCurrentPositionByType(screenRenderer *sdl.Renderer) (*CurrentPositionByType, error) {
 	special, err := NewSpecial(screenRenderer)
 	if err != nil {
 		return nil, err
@@ -215,10 +192,10 @@ func NewCurrentPositionByTypeSprite(screenRenderer *sdl.Renderer) (*CurrentPosit
 		return nil, err
 	}
 
-	return &CurrentPositionByTypeSprite{SpecialSprites: special, DotSprites: dots}, nil
+	return &CurrentPositionByType{SpecialSprites: special, DotSprites: dots}, nil
 }
 
-func (style *CurrentPositionByTypeSprite) Render(view *View) Render {
+func (style *CurrentPositionByType) Render(view *View) Render {
 	return func(history *ShipHistory) {
 
 		currentPosition := history.positions[len(history.positions)-1]
@@ -243,7 +220,7 @@ func (style *CurrentPositionByTypeSprite) Render(view *View) Render {
 		// TODO: Set opacity to 33% if older than a certain age
 
 		err := view.screenRenderer.Copy(
-			sheet.Texture, srcRect, toDestRect(&baseMapPosition, sheet.SpriteSize))
+			sheet.Texture, srcRect, toDestRect(&baseMapPosition, defaultDestSpriteSizePixels))
 		if err != nil {
 			logger.Warn("rendering CurrentPositionByType", "error", err)
 		}

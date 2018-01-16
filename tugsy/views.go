@@ -66,11 +66,16 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 			height: float64(screenHeight),
 		}
 
+		currentPositionRenderer, err := NewCurrentPositionByType(screenRenderer)
+		if err != nil {
+			return nil, err
+		}
+
 		viewSet.Views = append(viewSet.Views, &View{
 			BaseMap:                   baseMap,
 			ViewName:                  viewConfig.MapName,
 			screenRenderer:            screenRenderer,
-			renderCurrentPositionFunc: &CurrentPositionByType{},
+			renderCurrentPositionFunc: currentPositionRenderer,
 			renderPathFunc:            &MarkPathByType{},
 		})
 	}
@@ -102,7 +107,6 @@ func (viewSet *ViewSet) TeardownResources() {
 		logger.Info("Unloading view", view.ViewName)
 		view.BaseMap.Tex.Destroy()
 	}
-
 }
 
 type View struct {
