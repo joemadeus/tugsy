@@ -1,6 +1,7 @@
 *.test
 /generate-bin
 .idea
+.project
 .DS_Store
 
 *.nmea
