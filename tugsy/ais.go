@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	connRetryTimeoutSecs = 10 // How many seconds to sleep after a timeout
+	connRetryTimeoutSecs = 10 // How many seconds to sleep after a connection failure
 	connRetryAttempts    = 10 // How many times to try a connection before failing it
 	readDeadlineSecs     = 15
 )
@@ -139,9 +139,13 @@ func (router *RemoteAISServer) start() {
 
 			connbuf := bufio.NewScanner(router.conn)
 			connbuf.Split(bufio.ScanLines)
+			//			router.conn.SetReadDeadline(time.Now().Add(readDeadlineSecs * time.Second))
 			for connbuf.Scan() && MachineAndProcessState.running {
 				router.inStrings <- connbuf.Text()
-				router.conn.SetReadDeadline(time.Now().Add(readDeadlineSecs * time.Second))
+				//				readErr := router.conn.SetReadDeadline(time.Now().Add(readDeadlineSecs * time.Second))
+				//				if readErr != nil {
+				//					logger.Debug("Read timeout")
+				//				}
 			}
 			router.conn.Close()
 			logger.Warn("Connection broken/not established", "host", router.HostColonPort, "retrying in", connRetryTimeoutSecs)
