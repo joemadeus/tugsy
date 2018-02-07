@@ -5,10 +5,10 @@ import (
 )
 
 const (
-	UnknownHue = Hue(361)
-	UnknownR   = 128
-	UnknownG   = 128
-	UnknownB   = 128
+	UnknownHue                  = Hue(361)
+	UnknownR                    = 128
+	UnknownG                    = 128
+	UnknownB                    = 128
 	defaultDestSpriteSizePixels = 20
 )
 
@@ -104,12 +104,11 @@ func hueToRGB(hue Hue) (r, g, b uint8) {
 	}
 }
 
-// Maps a ship type to a hue, or to 0 if the type is unknown or it should be
+// Maps a ship type to a hue, or to UnknownHue if the type is unknown or should be
 // mapped that way anyway
 func shipTypeToHue(history *ShipHistory) Hue {
 	switch {
 	case history.voyagedata == nil:
-		logger.Debug("voyage data is nil")
 		return UnknownHue
 	case history.voyagedata.ShipType <= 29:
 		return UnknownHue

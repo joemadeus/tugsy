@@ -13,7 +13,7 @@ const (
 
 type SpriteSheet struct {
 	*sdl.Texture
-	SpriteSize    int32
+	SpriteSize int32
 }
 
 func (sheet *SpriteSheet) getSourceRect(row, column int32) *sdl.Rect {
@@ -27,7 +27,7 @@ func (sheet *SpriteSheet) getSourceRect(row, column int32) *sdl.Rect {
 
 type Dots struct {
 	SpriteSheet
-	DotMap      map[Hue]int32  // a dot hue to its row number, zero based
+	DotMap      map[Hue]int32    // a dot hue to its row number, zero based
 	ModifierMap map[string]int32 // a "modifier" string name to its column
 }
 
