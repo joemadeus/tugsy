@@ -1,0 +1,10 @@
+package: github.com/joemadeus/tugsy/tugsy
+import:
+- package: github.com/mgutz/logxi
+- package: github.com/gorilla/mux
+  version: ^1.6.1
+- package: github.com/mattn/go-sqlite3
+  version: ^1.6.0
+- package: github.com/jmoiron/sqlx
+- package: github.com/golang/snappy
+- package: gopkg.in/yaml.v2
