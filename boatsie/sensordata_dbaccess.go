@@ -1,23 +1,27 @@
 package main
 
 import (
-	"encoding/json"
-
-	"github.com/golang/snappy"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/vmihailenco/msgpack"
 )
 
 const (
-    createStatement = `
+	createStatement = `
 CREATE TABLE IF NOT EXISTS sensordata (
   sensor_name     TEXT     NOT NULL,
   sensor_location TEXT     NOT NULL,
   recorded        INTEGER  NOT NULL,
   received        INTEGER  NOT NULL,
-  json_data       BLOB     NOT NULL,
+  data            BLOB     NOT NULL,
 CONSTRAINT sensordata_pk PRIMARY KEY (sensor_name, sensor_location, recorded))`
 )
+
+// The database representation of our sensor readings
+type SensorRow struct {
+	SensorReading
+	Data []byte `db:"data"`
+}
 
 type SensorDataAccessor interface {
 	AddSensorJSON(reading SensorReading) error
@@ -43,25 +47,22 @@ func NewSensorDataAccess(database string) (*SensorDataAccess, error) {
 }
 
 func (accessor *SensorDataAccess) AddSensorJSON(reading SensorReading) error {
-	jsonBytes, err := json.Marshal(reading)
+	dataBytes, err := msgpack.Marshal(reading.Data)
 	if err != nil {
 		return err
 	}
 
-	var compressedBytes []byte
-	snappy.Encode(compressedBytes, jsonBytes)
-
 	tx := accessor.DB.MustBegin()
 	tx.MustExec(
 		"INSERT INTO sensordata (sensor_name, sensor_location, recorded, received, json_data) VALUES ($1, $2, $3, $4, $5)",
-		reading.Name, reading.Location, reading.Recorded, reading.Received, compressedBytes)
+		reading.Name, reading.Location, reading.Recorded, reading.Received, dataBytes)
 	tx.Commit()
 
 	return nil
 }
 
 func (accessor *SensorDataAccess) GetSensorJSON(since int64, sensorname string, location string) ([]SensorReading, error) {
-	selectString := " SELECT json_data FROM sensordata WHERE recorded > $1 "
+	selectString := " SELECT * FROM sensordata WHERE recorded > $1 " // <- the only bind var! inefficient but I don't care!
 	sensorString := ""
 	if sensorname != "" {
 		sensorString = " AND sensor_name = " + sensorname
@@ -71,17 +72,19 @@ func (accessor *SensorDataAccess) GetSensorJSON(since int64, sensorname string, 
 		locationString = " AND sensor_location = " + location
 	}
 
-	rows := [][]byte{}
-	accessor.Select(&rows, selectString+sensorString+locationString)
+	rows := []SensorRow{}
+	accessor.Select(&rows, selectString+sensorString+locationString, since)
 
 	readings := make([]SensorReading, 0, len(rows))
 	for _, row := range rows {
-		var decompressed []byte
-		snappy.Decode(row, decompressed)
-		reading := SensorReading{}
-		err := json.Unmarshal(decompressed, reading)
+		var unmarshalled map[string]interface{}
+		err := msgpack.Unmarshal(row.Data, unmarshalled)
 		if err != nil {
-			logger.Warn("could not decode decompressed json", err)
+			logger.Warn("could not decode msgpack'd data map", err)
+		}
+		reading := SensorReading{
+			SensorMeta: row.SensorMeta,
+			Data:       unmarshalled,
 		}
 		readings = append(readings, reading)
 	}

@@ -1,13 +1,13 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/vmihailenco/msgpack"
 )
 
 const (
@@ -26,17 +26,21 @@ const (
 	getLocationRequestVar   = "location"
 )
 
-// SensorReading is the data for a sensor reading: the name of the sensor, its location,
-// when it was recorded at the location and when it was received here, along with K/V
-// pairs specific to the sensor that contained the actual sensor readings
-type SensorReading struct {
-	Name     string `json:"name"     db:"sensor_name"`
-	Location string `json:"location" db:"sensor_location"`
-	Recorded int64  `json:"recorded" db:"recorded"`
-	Received int64  `json:"received" db:"received"`
+// SensorMeta is the metadata for a sensor reading: the name of the sensor, its
+// location, when it was recorded at the location and when it was received here
+//type SensorMeta struct {
+//	Name     string `db:"sensor_name"`
+//	Location string `db:"sensor_location"`
+//	Recorded int64  `db:"recorded"`
+//	Received int64  `db:"received"`
+//}
 
-	Data map[string]interface{} `json:"data"`
-}
+// SensorReading is the metadata for a reading along with K/V pairs specific to
+// the sensor that contained the actual recorded data
+//type SensorReading struct {
+//	SensorMeta
+//	Data map[string]interface{}
+//}
 
 // A generic error struct for when bad things happen
 type Dammit struct {
@@ -55,10 +59,6 @@ func getResourcesDir() string {
 	}
 }
 
-type EndpointHandler interface {
-	runnit(w http.ResponseWriter, r *http.Request)
-}
-
 type Endpoint struct {
 	SensorDataAccessor
 	RequestPath   string
@@ -69,21 +69,19 @@ type Endpoint struct {
 type AddDataEndpoint Endpoint
 type GetDataEndpoint Endpoint
 
-func (endpoint *AddDataEndpoint) runnit(w http.ResponseWriter, r *http.Request) {
+func (endpoint *AddDataEndpoint) Runnit(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	w.Header().Set("Content-Type", endpoint.ContentType)
 	var err error
 
 	readings := []SensorReading{}
-	err = json.NewDecoder(r.Body).Decode(&readings)
+	err = msgpack.NewDecoder(r.Body).Decode(&readings)
 	if err != nil {
-		logger.Warn("could not accept sensor data", err)
+		logger.Warn("could not decode sensor data", err)
 		w.WriteHeader(500)
-		json.NewEncoder(w).Encode(Dammit{"could not accept sensor data: " + err.Error()})
+		msgpack.NewEncoder(w).Encode(Dammit{"could not decode sensor data: " + err.Error()})
 		return
 	}
-
-	logger.Trace("Decoded data ", readings)
 
 	for _, reading := range readings {
 		reading.Received = now.Unix()
@@ -91,25 +89,25 @@ func (endpoint *AddDataEndpoint) runnit(w http.ResponseWriter, r *http.Request) 
 		if err != nil {
 			logger.Warn("could not write sensor data to the DB", err)
 			w.WriteHeader(500)
-			json.NewEncoder(w).Encode(Dammit{"could not write sensor data to the DB: " + err.Error()})
+			msgpack.NewEncoder(w).Encode(Dammit{"could not write sensor data to the DB: " + err.Error()})
 			return
 		}
+		logger.Trace("added", "reading", reading)
 	}
 
 	w.WriteHeader(202)
 	w.Write([]byte("[]\n")) // no response body, really
 }
 
-func (endpoint *GetDataEndpoint) runnit(w http.ResponseWriter, r *http.Request) {
+func (endpoint *GetDataEndpoint) Runnit(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	w.Header().Set("Content-Type", endpoint.ContentType)
 	var err error
-	var ok bool
 
-	requestVars := mux.Vars(r)
-	val, ok := requestVars[getSinceTimestampRequestVar]
+	val := r.FormValue(getSinceTimestampRequestVar)
 	var since int64
-	if ok {
+	if val != "" {
+		logger.Debug("parsing a since param")
 		since, err = strconv.ParseInt(val, 10, 64)
 		if err != nil {
 			logger.Warn("Couldn't decode a 'since' string", "since", since, "err", err)
@@ -120,8 +118,8 @@ func (endpoint *GetDataEndpoint) runnit(w http.ResponseWriter, r *http.Request) 
 		since = now.Add(-1 * getSinceTimestampDefault).Unix()
 	}
 
-	sensor, ok := requestVars[getSensorNameRequestVar]
-	location, ok := requestVars[getLocationRequestVar]
+	sensor := r.FormValue(getSensorNameRequestVar)
+	location := r.FormValue(getLocationRequestVar)
 
 	logger.Debug("Query params", "since", since, "sensor", sensor, "location", location)
 
@@ -129,14 +127,14 @@ func (endpoint *GetDataEndpoint) runnit(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		logger.Warn("could not get sensor data from the DB", err)
 		w.WriteHeader(500)
-		json.NewEncoder(w).Encode(Dammit{"could not get sensor data from the DB: " + err.Error()})
+		msgpack.NewEncoder(w).Encode(Dammit{"could not get sensor data from the DB: " + err.Error()})
 		return
 	}
 
 	logger.Debug("returning data", "count", len(data))
 
 	w.WriteHeader(200)
-	json.NewEncoder(w).Encode(data)
+	msgpack.NewEncoder(w).Encode(data)
 }
 
 func main() {
@@ -162,8 +160,8 @@ func main() {
 	}
 
 	router := mux.NewRouter()
-	router.HandleFunc(getDataEndpoint.RequestPath, getDataEndpoint.runnit).Methods(getDataEndpoint.RequestMethod)
-	router.HandleFunc(addDataEndpoint.RequestPath, addDataEndpoint.runnit).Methods(addDataEndpoint.RequestMethod)
+	router.HandleFunc(getDataEndpoint.RequestPath, getDataEndpoint.Runnit).Methods(getDataEndpoint.RequestMethod)
+	router.HandleFunc(addDataEndpoint.RequestPath, addDataEndpoint.Runnit).Methods(addDataEndpoint.RequestMethod)
 	logger.Info("Server is starting")
 	logger.Info("Server is stopping", http.ListenAndServe(serverport, router))
 }

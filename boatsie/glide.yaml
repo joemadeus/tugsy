@@ -8,3 +8,5 @@ import:
 - package: github.com/jmoiron/sqlx
 - package: github.com/golang/snappy
 - package: gopkg.in/yaml.v2
+- package: github.com/vmihailenco/msgpack
+  version: ^3.2.8

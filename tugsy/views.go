@@ -20,6 +20,9 @@ const (
 
 var NoViewConfigFound = errors.New("could not find view configs")
 
+type ShipDataRenderFunction func(history *ShipHistory)
+type WxDataRenderFunction func(wx *WeatherData)
+
 type ViewSet struct {
 	resourceDir string
 
@@ -51,6 +54,16 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 		Views: make([]*View, 0),
 	}
 
+	currentPositionRenderer, err := NewCurrentPositionByType(screenRenderer)
+	if err != nil {
+		return nil, err
+	}
+
+	markPathRenderer, err := NewMarkPathByType()
+	if err != nil {
+		return nil, err
+	}
+
 	for _, viewConfig := range viewConfigs {
 		logger.Info("Loading", "viewName", viewConfig.MapName)
 		baseTexture, err := image.LoadTexture(screenRenderer, viewSet.getResourcePath(viewConfig.MapName, baseMapFile))
@@ -66,18 +79,16 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 			height: float64(screenHeight),
 		}
 
-		currentPositionRenderer, err := NewCurrentPositionByType(screenRenderer)
-		if err != nil {
-			return nil, err
+		view := &View{
+			BaseMap:        baseMap,
+			ViewName:       viewConfig.MapName,
+			screenRenderer: screenRenderer,
 		}
 
-		viewSet.Views = append(viewSet.Views, &View{
-			BaseMap:                   baseMap,
-			ViewName:                  viewConfig.MapName,
-			screenRenderer:            screenRenderer,
-			renderCurrentPositionFunc: currentPositionRenderer,
-			renderPathFunc:            &MarkPathByType{},
-		})
+		view.renderPathFunc = markPathRenderer.Render(view)
+		view.renderCurrentPositionFunc = currentPositionRenderer.Render(view)
+
+		viewSet.Views = append(viewSet.Views, view)
 	}
 
 	return viewSet, nil
@@ -114,7 +125,7 @@ type View struct {
 	ViewName       string
 	screenRenderer *sdl.Renderer
 
-	renderPathFunc, renderCurrentPositionFunc RenderStyle
+	renderPathFunc, renderCurrentPositionFunc ShipDataRenderFunction
 }
 
 // Clears the renderer and redisplays the base map and all tracks
@@ -140,8 +151,8 @@ func (view *View) Display() error {
 	for _, mmsi := range MachineAndProcessState.TheData.GetHistoryMMSIs() {
 		ok := MachineAndProcessState.TheData.RenderPositionReports(
 			mmsi,
-			view.renderPathFunc.Render(view),
-			view.renderCurrentPositionFunc.Render(view))
+			view.renderPathFunc,
+			view.renderCurrentPositionFunc)
 
 		if ok == false {
 			logger.Info("A ShipData has no points or was removed", "mmsi", fmt.Sprintf("%d", mmsi))

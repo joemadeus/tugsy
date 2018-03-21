@@ -187,7 +187,7 @@ func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
 
 // Executes the given translation function on all the position reports for the given
 // MMSI, returning true if the MMSI is known and false otherwise
-func (aisData *AISData) RenderPositionReports(mmsi uint32, renderPath, renderCurrentPosition Render) bool {
+func (aisData *AISData) RenderPositionReports(mmsi uint32, renderPath, renderCurrentPosition ShipDataRenderFunction) bool {
 	// lock held in GetShipHistory
 	history, ok := aisData.GetShipHistory(mmsi)
 

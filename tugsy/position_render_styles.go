@@ -13,11 +13,6 @@ const (
 )
 
 type Hue uint16
-type Render func(history *ShipHistory)
-
-type RenderStyle interface {
-	Render(view *View) Render
-}
 
 func toDestRect(position *BaseMapPosition, pixSquare int32) *sdl.Rect {
 	return &sdl.Rect{
@@ -171,8 +166,8 @@ func shipTypeToHue(history *ShipHistory) Hue {
 
 type NullRenderStyle struct{}
 
-func (style *NullRenderStyle) Render(view *View) Render {
-	return func(history *ShipHistory) {}
+func (style *NullRenderStyle) Render(view *View) func() {
+	return func() {}
 }
 
 type CurrentPositionByType struct {
@@ -194,7 +189,7 @@ func NewCurrentPositionByType(screenRenderer *sdl.Renderer) (*CurrentPositionByT
 	return &CurrentPositionByType{SpecialSprites: special, DotSprites: dots}, nil
 }
 
-func (style *CurrentPositionByType) Render(view *View) Render {
+func (style *CurrentPositionByType) Render(view *View) ShipDataRenderFunction {
 	return func(history *ShipHistory) {
 
 		currentPosition := history.positions[len(history.positions)-1]
@@ -228,7 +223,11 @@ func (style *CurrentPositionByType) Render(view *View) Render {
 
 type MarkPathByType struct{}
 
-func (style *MarkPathByType) Render(view *View) Render {
+func NewMarkPathByType() (*MarkPathByType, error) {
+	return &MarkPathByType{}, nil
+}
+
+func (style *MarkPathByType) Render(view *View) ShipDataRenderFunction {
 	trackPointsSize := int32(4)
 	trackAlpha := uint8(128)
 
