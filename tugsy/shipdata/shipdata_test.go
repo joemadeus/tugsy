@@ -1,4 +1,4 @@
-package main
+package shipdata
 
 import (
 	"testing"
@@ -101,7 +101,7 @@ func TestTranslatePositionReports(t *testing.T) {
 	mmsis := aisData.GetHistoryMMSIs()
 	assert.Equal(t, 1, len(mmsis))
 	assert.Equal(t, mmsi, mmsis[0])
-	assert.True(t, aisData.dirty)
+	assert.True(t, aisData.Dirty)
 
 	shipHistory, ok := aisData.GetShipHistory(mmsi)
 	assert.True(t, ok)

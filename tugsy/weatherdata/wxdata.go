@@ -1,3 +1,3 @@
-package main
+package weatherdata
 
 type WeatherData struct{}

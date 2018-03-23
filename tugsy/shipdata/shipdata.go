@@ -1,4 +1,4 @@
-package main
+package shipdata
 
 import (
 	"time"
@@ -12,7 +12,7 @@ const (
 )
 
 type ShipHistory struct {
-	// position history is sorted oldest-first -- we append new positions to the end
+	// append new positions to the end
 	positions  []Positionable
 	voyagedata *SourcedStaticVoyageData
 	dirty      bool
@@ -52,27 +52,24 @@ func (history *ShipHistory) prune(since time.Time) {
 	history.positions = append(newSlice, history.positions[a:]...)
 }
 
+var PositionData = &AISData{
+	mmsiHistories:    make(map[uint32]*ShipHistory),
+	mmsiBaseStations: make(map[uint32]*SourcedBaseStationReport),
+	mmsiBinaryData:   make(map[uint32]*SourcedBinaryBroadcast),
+
+	positionRetentionTime:   defaultPositionRetentionTime,
+	positionCullingInterval: defaultPositionCullingInterval,
+}
+
 type AISData struct {
 	mmsiHistories    map[uint32]*ShipHistory
-	mmsiBasestations map[uint32]*SourcedBaseStationReport
+	mmsiBaseStations map[uint32]*SourcedBaseStationReport
 	mmsiBinaryData   map[uint32]*SourcedBinaryBroadcast
 
 	positionRetentionTime   time.Duration
 	positionCullingInterval time.Duration
 
-	dirty bool
 	sync.Mutex
-}
-
-func NewAISData() *AISData {
-	return &AISData{
-		mmsiHistories:    make(map[uint32]*ShipHistory),
-		mmsiBasestations: make(map[uint32]*SourcedBaseStationReport),
-		mmsiBinaryData:   make(map[uint32]*SourcedBinaryBroadcast),
-
-		positionRetentionTime:   defaultPositionRetentionTime,
-		positionCullingInterval: defaultPositionCullingInterval,
-	}
 }
 
 func (aisData *AISData) AddPosition(report Positionable) {
@@ -84,7 +81,6 @@ func (aisData *AISData) AddPosition(report Positionable) {
 	defer history.Unlock()
 	history.addPosition(report)
 	history.prune(aisData.getPruneSinceTime())
-	aisData.dirty = true
 }
 
 func (aisData *AISData) getOrCreateShipHistory(mmsi uint32) *ShipHistory {
@@ -111,7 +107,7 @@ func (aisData *AISData) UpdateStaticVoyageData(data *SourcedStaticVoyageData) {
 func (aisData *AISData) UpdateBaseStationReport(report *SourcedBaseStationReport) {
 	aisData.Lock()
 	defer aisData.Unlock()
-	aisData.mmsiBasestations[report.MMSI] = report
+	aisData.mmsiBaseStations[report.MMSI] = report
 }
 
 func (aisData *AISData) UpdateBinaryBroadcast(report *SourcedBinaryBroadcast) {
@@ -143,9 +139,6 @@ func (aisData *AISData) PrunePositions() {
 
 				history.Lock()
 				history.prune(since)
-				if history.dirty {
-					aisData.dirty = true
-				}
 
 				if len(history.positions) == 0 {
 					logger.Info("A ship has not been heard from in a while. Removing.", "mmsi", mmsi)
@@ -187,27 +180,28 @@ func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
 
 // Executes the given translation function on all the position reports for the given
 // MMSI, returning true if the MMSI is known and false otherwise
-func (aisData *AISData) RenderPositionReports(mmsi uint32, renderPath, renderCurrentPosition ShipDataRenderFunction) bool {
-	// lock held in GetShipHistory
-	history, ok := aisData.GetShipHistory(mmsi)
+func (aisData *AISData) RenderPositionReports(renderPath, renderCurrentPosition ShipDataRenderFunction) {
+	for _, mmsi := range aisData.GetHistoryMMSIs() {
+		// lock held in GetShipHistory
+		history, ok := aisData.GetShipHistory(mmsi)
 
-	if ok == false {
-		return false
+		if ok == false {
+			logger.Debug("History has vanished", "mmsi", mmsi)
+			continue
+		}
+
+		history.Lock()
+		if len(history.positions) == 0 {
+			logger.Debug("No positions", "mmsi", mmsi)
+			continue
+		}
+
+		renderPath(history)
+		renderCurrentPosition(history)
+
+		history.dirty = false
+		history.Unlock()
 	}
-
-	history.Lock()
-	defer history.Unlock()
-
-	if len(history.positions) == 0 {
-		logger.Info("No positions", "mmsi", mmsi)
-		return false
-	}
-
-	renderPath(history)
-	renderCurrentPosition(history)
-
-	history.dirty = false
-	return true
 }
 
 func (aisData *AISData) getPruneSinceTime() time.Time {

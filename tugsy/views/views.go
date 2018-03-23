@@ -1,27 +1,25 @@
-package main
+package views
 
 import (
 	"errors"
 
-	"fmt"
-
 	"github.com/andmarios/aislib"
+	"github.com/joemadeus/tugsy/tugsy/config"
+	"github.com/joemadeus/tugsy/tugsy/shipdata"
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 const (
-	baseMapFile = "/base.png"
-
-	screenWidth  = 480
-	screenHeight = 760
-	screenTitle  = "Tugsy"
+	baseMapFile  = "/base.png"
+	ScreenWidth  = 480
+	ScreenHeight = 760
+	ScreenTitle  = "Tugsy"
 )
 
 var NoViewConfigFound = errors.New("could not find view configs")
 
-type ShipDataRenderFunction func(history *ShipHistory)
-type WxDataRenderFunction func(wx *WeatherData)
+type Hue uint16
 
 type ViewSet struct {
 	resourceDir string
@@ -38,7 +36,7 @@ type ViewConfig struct {
 	West    float64
 }
 
-func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, error) {
+func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *config.Config) (*ViewSet, error) {
 	if config.IsSet("views") == false {
 		return nil, NoViewConfigFound
 	}
@@ -54,19 +52,19 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 		Views: make([]*View, 0),
 	}
 
-	currentPositionRenderer, err := NewCurrentPositionByType(screenRenderer)
+	currentPositionRenderer, err := shipdata.NewCurrentPositionByType(screenRenderer, config)
 	if err != nil {
 		return nil, err
 	}
 
-	markPathRenderer, err := NewMarkPathByType()
+	markPathRenderer, err := shipdata.NewMarkPathByType()
 	if err != nil {
 		return nil, err
 	}
 
 	for _, viewConfig := range viewConfigs {
 		logger.Info("Loading", "viewName", viewConfig.MapName)
-		baseTexture, err := image.LoadTexture(screenRenderer, viewSet.getResourcePath(viewConfig.MapName, baseMapFile))
+		baseTexture, err := image.LoadTexture(screenRenderer, config.GetViewPath(viewConfig.MapName)+baseMapFile)
 		if err != nil {
 			return nil, err
 		}
@@ -75,14 +73,14 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 			Tex:    baseTexture,
 			SWGeo:  RealWorldPosition{viewConfig.West, viewConfig.South},
 			NEGeo:  RealWorldPosition{viewConfig.East, viewConfig.North},
-			width:  float64(screenWidth),
-			height: float64(screenHeight),
+			width:  float64(ScreenWidth),
+			height: float64(ScreenHeight),
 		}
 
 		view := &View{
 			BaseMap:        baseMap,
 			ViewName:       viewConfig.MapName,
-			screenRenderer: screenRenderer,
+			ScreenRenderer: screenRenderer,
 		}
 
 		view.renderPathFunc = markPathRenderer.Render(view)
@@ -94,16 +92,11 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *Config) (*ViewSet, 
 	return viewSet, nil
 }
 
-// Returns a path to a resource in the given view
-func (viewSet *ViewSet) getResourcePath(viewName string, pngResource string) string {
-	return viewSet.resourceDir + "/" + viewName + pngResource
-}
-
-func (viewSet *ViewSet) currentView() *View {
+func (viewSet *ViewSet) CurrentView() *View {
 	return viewSet.Views[viewSet.index]
 }
 
-func (viewSet *ViewSet) nextView() *View {
+func (viewSet *ViewSet) NextView() *View {
 	if viewSet.index == len(viewSet.Views)-1 {
 		viewSet.index = 0
 	} else {
@@ -123,51 +116,35 @@ func (viewSet *ViewSet) TeardownResources() {
 type View struct {
 	*BaseMap
 	ViewName       string
-	screenRenderer *sdl.Renderer
+	ScreenRenderer *sdl.Renderer
 
-	renderPathFunc, renderCurrentPositionFunc ShipDataRenderFunction
+	renderPathFunc, renderCurrentPositionFunc shipdata.ShipDataRenderFunction
 }
 
 // Clears the renderer and redisplays the base map and all tracks
 func (view *View) Display() error {
-	if MachineAndProcessState.TheData.dirty == false {
-		// if there are no updates since the last refresh, don't
-		// bother redisplaying
-		return nil
-	}
-
-	err := view.screenRenderer.Clear()
+	err := view.ScreenRenderer.Clear()
 	if err != nil {
 		logger.Warn("Could not clear the screen renderer", "err", err)
 		return err
 	}
 
-	err = view.screenRenderer.Copy(view.BaseMap.Tex, nil, nil)
+	err = view.ScreenRenderer.Copy(view.BaseMap.Tex, nil, nil)
 	if err != nil {
 		logger.Warn("Could not copy the base map to the screen renderer", "err", err)
 		return err
 	}
 
-	for _, mmsi := range MachineAndProcessState.TheData.GetHistoryMMSIs() {
-		ok := MachineAndProcessState.TheData.RenderPositionReports(
-			mmsi,
-			view.renderPathFunc,
-			view.renderCurrentPositionFunc)
+	shipdata.PositionData.RenderPositionReports(view.renderPathFunc, view.renderCurrentPositionFunc)
 
-		if ok == false {
-			logger.Info("A ShipData has no points or was removed", "mmsi", fmt.Sprintf("%d", mmsi))
-			continue
-		}
-	}
-
-	view.screenRenderer.Present()
+	view.ScreenRenderer.Present()
 
 	return nil
 }
 
 // getBaseMapPosition returns the given real world position on the view's
 // base map using a simple linear approximation
-func (view *View) getBaseMapPosition(position *aislib.PositionReport) BaseMapPosition {
+func (view *View) GetBaseMapPosition(position *aislib.PositionReport) BaseMapPosition {
 	return BaseMapPosition{
 		(position.Lon - view.SWGeo.X) / (view.NEGeo.X - view.SWGeo.X) * view.width,
 		view.height - (position.Lat-view.SWGeo.Y)/(view.NEGeo.Y-view.SWGeo.Y)*view.height,

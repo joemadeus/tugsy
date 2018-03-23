@@ -1,6 +1,7 @@
-package main
+package views
 
 import (
+	"github.com/joemadeus/tugsy/tugsy/config"
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -31,11 +32,11 @@ type Dots struct {
 	ModifierMap map[string]int32 // a "modifier" string name to its column
 }
 
-func NewDots(screenRenderer *sdl.Renderer) (*Dots, error) {
+func NewDots(screenRenderer *sdl.Renderer, config *config.Config) (*Dots, error) {
 	logger.Info("Loading sprites \"Dots\"")
 	dots := &Dots{}
 	var err error
-	dots.Texture, err = image.LoadTexture(screenRenderer, getSpritePath(dotsSpritesFile))
+	dots.Texture, err = image.LoadTexture(screenRenderer, config.GetSpritePath(dotsSpritesFile))
 	if err != nil {
 		return nil, err
 	}
@@ -81,11 +82,11 @@ type Special struct {
 	MarkerMap map[string]int32 // the name of the sprite to its row number, zero based
 }
 
-func NewSpecial(screenRenderer *sdl.Renderer) (*Special, error) {
+func NewSpecial(screenRenderer *sdl.Renderer, config *config.Config) (*Special, error) {
 	logger.Info("Loading sprites \"Special\"")
 	special := &Special{}
 	var err error
-	special.Texture, err = image.LoadTexture(screenRenderer, getSpritePath(specialSpritesFile))
+	special.Texture, err = image.LoadTexture(screenRenderer, config.GetSpritePath(specialSpritesFile))
 	if err != nil {
 		return nil, err
 	}
