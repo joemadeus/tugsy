@@ -1,7 +1,6 @@
 package shipdata
 
 import (
-	"github.com/joemadeus/tugsy/tugsy/config"
 	"github.com/joemadeus/tugsy/tugsy/views"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -9,8 +8,6 @@ import (
 const (
 	defaultDestSpriteSizePixels = 20
 )
-
-type ShipDataRenderFunction func(history *ShipHistory)
 
 func toDestRect(position *views.BaseMapPosition, pixSquare int32) *sdl.Rect {
 	return &sdl.Rect{
@@ -92,95 +89,108 @@ func (style *NullRenderStyle) Render(view *views.View) func() {
 	return func() {}
 }
 
-type CurrentPositionByTypeStyle struct {
-	SpecialSprites *views.Special
-	DotSprites     *views.Dots
+type ShipPositionStyle struct {
+	aisData        AISData
+	SpecialSprites *views.SpecialSheet
+	DotSprites     *views.DotSheet
 }
 
-func NewCurrentPositionByType(screenRenderer *sdl.Renderer, config *config.Config) (*CurrentPositionByTypeStyle, error) {
-	special, err := views.NewSpecial(screenRenderer, config)
-	if err != nil {
-		return nil, err
-	}
-
-	dots, err := views.NewDots(screenRenderer, config)
-	if err != nil {
-		return nil, err
-	}
-
-	return &CurrentPositionByTypeStyle{SpecialSprites: special, DotSprites: dots}, nil
+func NewShipHistoryRenderStyle(screenRenderer *sdl.Renderer, dotSheet *views.DotSheet, specialSheet *views.SpecialSheet) *ShipPositionStyle {
+	logger.Info("init ship history render")
+	return &ShipPositionStyle{SpecialSprites: specialSheet, DotSprites: dotSheet}
 }
 
-func (style *CurrentPositionByTypeStyle) Render(view *views.View) ShipDataRenderFunction {
-	return func(history *ShipHistory) {
+// ShipPositionStyle renders the currently known ship tracks and positions into the
+// map area
+func (style *ShipPositionStyle) Render(view *views.View) error {
+	for _, mmsi := range style.aisData.GetHistoryMMSIs() {
+		// lock held in GetShipHistory
+		history, ok := style.aisData.GetShipHistory(mmsi)
 
-		currentPosition := history.positions[len(history.positions)-1]
-		baseMapPosition := view.GetBaseMapPosition(currentPosition.GetPositionReport())
-
-		hue := shipTypeToHue(history)
-		var srcRect *sdl.Rect
-		var sheet *views.SpriteSheet
-		var ok bool
-		if hue == views.UnknownHue {
-			srcRect, sheet, ok = style.SpecialSprites.GetSprite("unknown")
-			if ok == false {
-				return
-			}
-		} else {
-			srcRect, sheet, ok = style.DotSprites.GetSprite(hue, "normal")
-			if ok == false {
-				return
-			}
+		if ok == false {
+			logger.Debug("history has vanished", "mmsi", mmsi)
+			continue
 		}
 
-		// TODO: Set opacity to 33% if older than a certain age
-
-		err := view.ScreenRenderer.Copy(
-			sheet.Texture, srcRect, toDestRect(&baseMapPosition, defaultDestSpriteSizePixels))
-		if err != nil {
-			logger.Warn("rendering CurrentPositionByType", "error", err)
+		history.Lock()
+		if len(history.positions) == 0 {
+			logger.Debug("no positions", "mmsi", mmsi)
+			continue
 		}
+
+		style.renderPath(view, history)
+		style.renderCurrentPosition(view, history)
+
+		history.dirty = false
+		history.Unlock()
+	}
+
+	return nil
+}
+
+func (style *ShipPositionStyle) renderPath(view *views.View, history *ShipHistory) {
+	currentPosition := history.positions[len(history.positions)-1]
+	baseMapPosition := view.GetBaseMapPosition(currentPosition.GetPositionReport())
+
+	hue := shipTypeToHue(history)
+	var srcRect *sdl.Rect
+	var tex *views.SpriteSheet
+	var ok bool
+	if hue == views.UnknownHue {
+		tex = style.SpecialSprites.Texture
+		srcRect, ok = style.SpecialSprites.GetSprite("unknown")
+		if ok == false {
+			return
+		}
+	} else {
+		tex = style.DotSprites.Texture
+		srcRect, ok = style.DotSprites.GetSprite(hue, "normal")
+		if ok == false {
+			return
+		}
+	}
+
+	// TODO: Set opacity to 33% if older than a certain age
+
+	// TODO: Set hazardous cargo markers
+
+	err := view.ScreenRenderer.Copy(
+		tex, srcRect, toDestRect(&baseMapPosition, defaultDestSpriteSizePixels))
+	if err != nil {
+		logger.Warn("rendering CurrentPositionByType", "error", err)
 	}
 }
 
-type MarkPathByType struct{}
-
-func NewMarkPathByType() (*MarkPathByType, error) {
-	return &MarkPathByType{}, nil
-}
-
-func (style *MarkPathByType) Render(view *views.View) ShipDataRenderFunction {
+func (style *ShipPositionStyle) renderCurrentPosition(view *views.View, history *ShipHistory) {
 	trackPointsSize := int32(4)
 	trackAlpha := uint8(128)
 
-	return func(history *ShipHistory) {
-		r, g, b := views.HueToRGB(shipTypeToHue(history))
-		sdlPoints := make([]sdl.Point, len(history.positions), len(history.positions))
-		sdlRects := make([]sdl.Rect, len(history.positions), len(history.positions))
+	r, g, b := views.HueToRGB(shipTypeToHue(history))
+	sdlPoints := make([]sdl.Point, len(history.positions), len(history.positions))
+	sdlRects := make([]sdl.Rect, len(history.positions), len(history.positions))
 
-		for i, position := range history.positions {
-			baseMapPosition := view.GetBaseMapPosition(position.GetPositionReport())
-			sdlPoints[i] = sdl.Point{
-				X: int32(baseMapPosition.X + 0.5),
-				Y: int32(baseMapPosition.Y + 0.5),
-			}
-			sdlRects[i] = sdl.Rect{
-				X: int32(baseMapPosition.X+0.5) - (trackPointsSize / 2),
-				Y: int32(baseMapPosition.Y+0.5) - (trackPointsSize / 2),
-				W: trackPointsSize,
-				H: trackPointsSize,
-			}
+	for i, position := range history.positions {
+		baseMapPosition := view.GetBaseMapPosition(position.GetPositionReport())
+		sdlPoints[i] = sdl.Point{
+			X: int32(baseMapPosition.X + 0.5),
+			Y: int32(baseMapPosition.Y + 0.5),
 		}
+		sdlRects[i] = sdl.Rect{
+			X: int32(baseMapPosition.X+0.5) - (trackPointsSize / 2),
+			Y: int32(baseMapPosition.Y+0.5) - (trackPointsSize / 2),
+			W: trackPointsSize,
+			H: trackPointsSize,
+		}
+	}
 
-		view.ScreenRenderer.SetDrawColor(r, g, b, trackAlpha)
-		err := view.ScreenRenderer.DrawLines(sdlPoints)
-		if err != nil {
-			logger.Warn("rendering track lines MarkPathByType", "error", err)
-		}
+	view.ScreenRenderer.SetDrawColor(r, g, b, trackAlpha)
+	err := view.ScreenRenderer.DrawLines(sdlPoints)
+	if err != nil {
+		logger.Warn("rendering track lines MarkPathByType", "error", err)
+	}
 
-		err = view.ScreenRenderer.DrawRects(sdlRects)
-		if err != nil {
-			logger.Warn("rendering track points MarkPathByType", "error", err)
-		}
+	err = view.ScreenRenderer.DrawRects(sdlRects)
+	if err != nil {
+		logger.Warn("rendering track points MarkPathByType", "error", err)
 	}
 }

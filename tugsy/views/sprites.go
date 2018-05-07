@@ -10,6 +10,8 @@ const (
 	defaultSpriteSizePixels = 40
 	dotsSpritesFile         = "dots-normal.png"
 	specialSpritesFile      = "special.png"
+	flagsSpritesFile        = "flags.png"
+	panesSpritesFile        = "panes.png"
 )
 
 type SpriteSheet struct {
@@ -26,21 +28,21 @@ func (sheet *SpriteSheet) getSourceRect(row, column int32) *sdl.Rect {
 	}
 }
 
-type Dots struct {
+type DotSheet struct {
 	SpriteSheet
 	DotMap      map[Hue]int32    // a dot hue to its row number, zero based
 	ModifierMap map[string]int32 // a "modifier" string name to its column
 }
 
-func NewDots(screenRenderer *sdl.Renderer, config *config.Config) (*Dots, error) {
+func NewDotSheet(screenRenderer *sdl.Renderer, config *config.Config) (*DotSheet, error) {
 	logger.Info("Loading sprites \"Dots\"")
-	dots := &Dots{}
-	var err error
-	dots.Texture, err = image.LoadTexture(screenRenderer, config.GetSpritePath(dotsSpritesFile))
+	tex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(dotsSpritesFile))
 	if err != nil {
 		return nil, err
 	}
 
+	dots := &DotSheet{}
+	dots.Texture = tex
 	dots.SpriteSize = defaultSpriteSizePixels
 
 	dots.ModifierMap = make(map[string]int32)
@@ -57,43 +59,41 @@ func NewDots(screenRenderer *sdl.Renderer, config *config.Config) (*Dots, error)
 	return dots, nil
 }
 
-func (dots *Dots) Teardown() {
+func (dots *DotSheet) Teardown() {
 	dots.Texture.Destroy()
 }
 
-func (dots *Dots) GetSprite(hue Hue, modifier string) (*sdl.Rect, *SpriteSheet, bool) {
+func (dots *DotSheet) GetSprite(hue Hue, modifier string) (*sdl.Rect, bool) {
 	row, ok := dots.DotMap[hue]
 	if ok == false {
-		logger.Warn("Hue is unknown", "Hue", hue)
-		return nil, nil, false
+		logger.Warn("hue is unknown", "hue", hue)
+		return nil, false
 	}
 
 	column, ok := dots.ModifierMap[modifier]
 	if ok == false {
-		logger.Warn("Modifier is unknown", "modifier name", modifier)
-		return nil, nil, false
+		logger.Warn("modifier is unknown", "modifier", modifier)
+		return nil, false
 	}
 
-	return dots.getSourceRect(row, column), &dots.SpriteSheet, true
+	return dots.getSourceRect(row, column), true
 }
 
-type Special struct {
+type SpecialSheet struct {
 	SpriteSheet
 	MarkerMap map[string]int32 // the name of the sprite to its row number, zero based
 }
 
-func NewSpecial(screenRenderer *sdl.Renderer, config *config.Config) (*Special, error) {
+func NewSpecialSheet(screenRenderer *sdl.Renderer, config *config.Config) (*SpecialSheet, error) {
 	logger.Info("Loading sprites \"Special\"")
-	special := &Special{}
-	var err error
-	special.Texture, err = image.LoadTexture(screenRenderer, config.GetSpritePath(specialSpritesFile))
+	tex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(specialSpritesFile))
 	if err != nil {
 		return nil, err
 	}
 
+	special := &SpecialSheet{}
+	special.Texture = tex
 	special.SpriteSize = defaultSpriteSizePixels
-
-	// TODO: could be set via config, instead
 
 	special.MarkerMap = make(map[string]int32)
 	special.MarkerMap["unknown"] = int32(0)
@@ -105,20 +105,69 @@ func NewSpecial(screenRenderer *sdl.Renderer, config *config.Config) (*Special, 
 	return special, nil
 }
 
-func (special *Special) Teardown() {
+func (special *SpecialSheet) Teardown() {
 	special.Texture.Destroy()
 }
 
-func (special *Special) GetSprite(spriteName string) (*sdl.Rect, *SpriteSheet, bool) {
+func (special *SpecialSheet) GetSprite(spriteName string) (*sdl.Rect, bool) {
 	row, ok := special.MarkerMap[spriteName]
 	if ok == false {
-		return nil, nil, false
+		logger.Warn("special: sprite is unknown", "spriteName", spriteName)
+		return nil, false
 	}
 
-	return special.getSourceRect(row, 0), &special.SpriteSheet, true
+	return special.getSourceRect(row, 0), true
 }
 
-type Flags struct {
+type FlagSheet struct {
 	*SpriteSheet
-	FlagMap map[uint8][2]uint8 // a flag ID to its X:Y coordinate
+	FlagMap map[string][2]uint8 // country code (ISO 3166-1 alpha-2) to flag X:Y coordinate
+}
+
+func NewFlagSheet(screenRenderer *sdl.Renderer, config *config.Config) (*FlagSheet, error) {
+	logger.Info("Loading sprites \"Flags\"")
+
+	tex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(flagsSpritesFile))
+	if err != nil {
+		return nil, err
+	}
+
+	flags := &FlagSheet{}
+	flags.Texture = tex
+
+	return flags, nil
+}
+
+type PaneSheet struct {
+	SpriteSheet
+	PaneMap map[string]int32
+}
+
+func NewPaneSheet(screenRenderer *sdl.Renderer, config *config.Config) (*PaneSheet, error) {
+	logger.Info("Loading sprites \"Panes\"")
+
+	tex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(panesSpritesFile))
+	if err != nil {
+		return nil, err
+	}
+
+	panes := &PaneSheet{}
+	panes.Texture = tex
+	panes.SpriteSize = 128
+
+	panes.PaneMap = make(map[string]int32)
+	panes.PaneMap["info"] = int32(0)
+	panes.PaneMap["tidebar"] = int32(1)
+	panes.PaneMap["skycolor"] = int32(2)
+	panes.PaneMap["wx_hazard"] = int32(3)
+
+	return panes, nil
+}
+
+func (panes *PaneSheet) getSprite(spriteName string) (*sdl.Rect, bool) {
+	row, ok := panes.PaneMap[spriteName]
+	if ok == false {
+		return nil, false
+	}
+	return panes.getSourceRect(row, 0), true
 }

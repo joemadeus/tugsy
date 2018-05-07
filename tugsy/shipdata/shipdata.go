@@ -1,9 +1,8 @@
 package shipdata
 
 import (
-	"time"
-
 	"sync"
+	"time"
 )
 
 const (
@@ -175,32 +174,6 @@ func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
 		return history, ok
 	} else {
 		return nil, ok
-	}
-}
-
-// Executes the given translation function on all the position reports for the given
-// MMSI, returning true if the MMSI is known and false otherwise
-func (aisData *AISData) RenderPositionReports(renderPath, renderCurrentPosition ShipDataRenderFunction) {
-	for _, mmsi := range aisData.GetHistoryMMSIs() {
-		// lock held in GetShipHistory
-		history, ok := aisData.GetShipHistory(mmsi)
-
-		if ok == false {
-			logger.Debug("History has vanished", "mmsi", mmsi)
-			continue
-		}
-
-		history.Lock()
-		if len(history.positions) == 0 {
-			logger.Debug("No positions", "mmsi", mmsi)
-			continue
-		}
-
-		renderPath(history)
-		renderCurrentPosition(history)
-
-		history.dirty = false
-		history.Unlock()
 	}
 }
 

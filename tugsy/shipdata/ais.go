@@ -2,10 +2,9 @@ package shipdata
 
 import (
 	"bufio"
+	"errors"
 	"net"
 	"time"
-
-	"errors"
 
 	"github.com/andmarios/aislib"
 	"github.com/joemadeus/tugsy/tugsy/config"
@@ -81,6 +80,7 @@ type RemoteAISServer struct {
 	HostColonPort string
 	conn          net.Conn
 	connAttempts  uint
+	running       bool
 }
 
 func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.FailedSentence, config *config.Config) ([]*RemoteAISServer, error) {
@@ -104,17 +104,19 @@ func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.
 }
 
 func (router *RemoteAISServer) Start() {
+	router.running = true
 	go aislib.Router(router.inStrings, router.Decoded, router.Failed)
 
 	timeoutSleep := time.Duration(connRetryTimeoutSecs) * time.Second
 	go func() {
-		for MachineAndProcessState.running {
+		for router.running {
 			serverAddr, err := net.ResolveTCPAddr("tcp", router.HostColonPort)
 			if err != nil {
 				logger.Warn("Could not resolve an AIS host", "error", err, "host", router.HostColonPort, "retrying in", connRetryTimeoutSecs)
 				router.connAttempts++
 				if router.connAttempts > connRetryAttempts {
 					logger.Error("Failing this AIS server", "host", router.HostColonPort)
+					router.Stop()
 					return
 				}
 				time.Sleep(timeoutSleep)
@@ -128,6 +130,7 @@ func (router *RemoteAISServer) Start() {
 				router.connAttempts++
 				if router.connAttempts > connRetryAttempts {
 					logger.Error("Failing this AIS server", "host", router.HostColonPort)
+					router.Stop()
 					return
 				}
 				time.Sleep(timeoutSleep)
@@ -139,7 +142,7 @@ func (router *RemoteAISServer) Start() {
 
 			connbuf := bufio.NewScanner(router.conn)
 			connbuf.Split(bufio.ScanLines)
-			for connbuf.Scan() && MachineAndProcessState.running {
+			for connbuf.Scan() && router.running {
 				router.inStrings <- connbuf.Text()
 			}
 
@@ -149,6 +152,10 @@ func (router *RemoteAISServer) Start() {
 		}
 		logger.Info("Router reconnect loop exiting")
 	}()
+}
+
+func (router *RemoteAISServer) Stop() {
+	router.running = false
 }
 
 func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, failed chan aislib.FailedSentence) {

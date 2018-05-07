@@ -1,7 +1,6 @@
 # QGIS Files
 *.qgs~
 
-tugsy
 glide.lock
 vendor/
 .idea/

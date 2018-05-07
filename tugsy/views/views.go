@@ -17,6 +17,10 @@ const (
 	ScreenTitle  = "Tugsy"
 )
 
+type Render interface {
+	Render(view *View) error
+}
+
 var NoViewConfigFound = errors.New("could not find view configs")
 
 type Hue uint16
@@ -26,6 +30,11 @@ type ViewSet struct {
 
 	index int
 	Views []*View
+
+	DotSprites   *DotSheet
+	SpecialSheet *SpecialSheet
+	FlagSheet    *FlagSheet
+	PaneSprites  *PaneSheet
 }
 
 type ViewConfig struct {
@@ -47,19 +56,40 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *config.Config) (*Vi
 		return nil, err
 	}
 
+	dots, err := NewDotSheet(screenRenderer, config)
+	if err != nil {
+		logger.Fatal("could not init the dots sprites", "error", err)
+		return nil, err
+	}
+
+	special, err := NewSpecialSheet(screenRenderer, config)
+	if err != nil {
+		logger.Fatal("could not init the special sprites", "error", err)
+		return nil, err
+	}
+
+	//flags, err := NewFlagSheet(screenRenderer, config)
+	//if err != nil {
+	//	logger.Fatal("could not init the flags sprites", "error", err)
+	//	return nil, err
+	//}
+
+	panes, err := NewPaneSheet(screenRenderer, config)
+	if err != nil {
+		logger.Fatal("could not init the panes sprites", "error", err)
+		return nil, err
+	}
+
+	renderset := []Render{
+		shipdata.NewShipHistoryRenderStyle(screenRenderer, dots, special),
+	}
+
 	viewSet := &ViewSet{
-		index: 0,
-		Views: make([]*View, 0),
-	}
-
-	currentPositionRenderer, err := shipdata.NewCurrentPositionByType(screenRenderer, config)
-	if err != nil {
-		return nil, err
-	}
-
-	markPathRenderer, err := shipdata.NewMarkPathByType()
-	if err != nil {
-		return nil, err
+		index:        0,
+		Views:        make([]*View, 0),
+		DotSprites:   dots,
+		SpecialSheet: special,
+		PaneSprites:  panes,
 	}
 
 	for _, viewConfig := range viewConfigs {
@@ -81,10 +111,8 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *config.Config) (*Vi
 			BaseMap:        baseMap,
 			ViewName:       viewConfig.MapName,
 			ScreenRenderer: screenRenderer,
+			Renderset:      renderset,
 		}
-
-		view.renderPathFunc = markPathRenderer.Render(view)
-		view.renderCurrentPositionFunc = currentPositionRenderer.Render(view)
 
 		viewSet.Views = append(viewSet.Views, view)
 	}
@@ -118,10 +146,10 @@ type View struct {
 	ViewName       string
 	ScreenRenderer *sdl.Renderer
 
-	renderPathFunc, renderCurrentPositionFunc shipdata.ShipDataRenderFunction
+	Renderset []Render
 }
 
-// Clears the renderer and redisplays the base map and all tracks
+// Clears the renderer and redisplays the screen using all the Renders in Renderset
 func (view *View) Display() error {
 	err := view.ScreenRenderer.Clear()
 	if err != nil {
@@ -135,7 +163,12 @@ func (view *View) Display() error {
 		return err
 	}
 
-	shipdata.PositionData.RenderPositionReports(view.renderPathFunc, view.renderCurrentPositionFunc)
+	for _, render := range view.Renderset {
+		err := render.Render(view)
+		if err != nil {
+			logger.Warn("could not render", "error", err, "render", render)
+		}
+	}
 
 	view.ScreenRenderer.Present()
 
