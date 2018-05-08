@@ -15,10 +15,10 @@ type ShipInfoStyle struct {
 	FlagSheet *views.FlagSheet
 }
 
-func NewShipInfoStyle(infoPane *views.InfoPaneStyle, flags *views.FlagSheet) *ShipInfoStyle {
+func NewShipInfoStyle(infoPane *views.InfoPaneStyle, spriteSet *views.SpriteSet) *ShipInfoStyle {
 	return &ShipInfoStyle{
 		InfoPane:  infoPane,
-		FlagSheet: flags,
+		FlagSheet: spriteSet.FlagSheet,
 	}
 }
 

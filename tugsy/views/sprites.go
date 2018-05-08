@@ -14,6 +14,45 @@ const (
 	panesSpritesFile        = "panes.png"
 )
 
+type SpriteSet struct {
+	DotSheet     *DotSheet
+	SpecialSheet *SpecialSheet
+	FlagSheet    *FlagSheet
+	PaneSheet    *PaneSheet
+}
+
+func NewSpriteSet(screenRenderer *sdl.Renderer, config *config.Config) (*SpriteSet, error) {
+	dots, err := NewDotSheet(screenRenderer, config)
+	if err != nil {
+		logger.Fatal("could not init the dots sprites", "error", err)
+		return nil, err
+	}
+
+	special, err := NewSpecialSheet(screenRenderer, config)
+	if err != nil {
+		logger.Fatal("could not init the special sprites", "error", err)
+		return nil, err
+	}
+
+	//flags, err := NewFlagSheet(screenRenderer, config)
+	//if err != nil {
+	//	logger.Fatal("could not init the flags sprites", "error", err)
+	//	return nil, err
+	//}
+
+	panes, err := NewPaneSheet(screenRenderer, config)
+	if err != nil {
+		logger.Fatal("could not init the panes sprites", "error", err)
+		return nil, err
+	}
+
+	return &SpriteSet{
+		DotSheet:     dots,
+		SpecialSheet: special,
+		PaneSheet:    panes,
+	}, nil
+}
+
 type SpriteSheet struct {
 	*sdl.Texture
 	SpriteSize int32

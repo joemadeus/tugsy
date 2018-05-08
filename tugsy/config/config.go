@@ -1,10 +1,10 @@
 package config
 
 import (
+	"errors"
 	"os"
 
-	"errors"
-
+	"github.com/mgutz/logxi/v1"
 	"github.com/spf13/viper"
 )
 
@@ -15,14 +15,14 @@ const (
 	devAppDir    = "."
 )
 
+var logger = log.New("config")
+
 type Config struct {
 	*viper.Viper
 	resourcesDirectory string
 }
 
 func NewConfig() (*Config, error) {
-	viperConfig := viper.New()
-
 	var resourcesDirectory string
 	if _, err := os.Stat(osxAppDir + resourcesDir); err == nil {
 		resourcesDirectory = osxAppDir + resourcesDir
@@ -32,9 +32,12 @@ func NewConfig() (*Config, error) {
 		return nil, errors.New("Could not determine the base dir for the app")
 	}
 
+	logger.Info("Loading resources", "path", resourcesDirectory)
+
 	// Anything set in the environment takes precedence over files
+	viperConfig := viper.New()
 	viperConfig.AutomaticEnv()
-	viperConfig.AddConfigPath(resourcesDir)
+	viperConfig.AddConfigPath(resourcesDirectory)
 	viperConfig.SetConfigName("config")
 
 	err := viperConfig.ReadInConfig()

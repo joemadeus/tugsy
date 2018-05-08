@@ -95,9 +95,9 @@ type ShipPositionStyle struct {
 	DotSprites     *views.DotSheet
 }
 
-func NewShipHistoryRenderStyle(screenRenderer *sdl.Renderer, dotSheet *views.DotSheet, specialSheet *views.SpecialSheet) *ShipPositionStyle {
+func NewShipHistoryRenderStyle(screenRenderer *sdl.Renderer, spriteSet *views.SpriteSet) *ShipPositionStyle {
 	logger.Info("init ship history render")
-	return &ShipPositionStyle{SpecialSprites: specialSheet, DotSprites: dotSheet}
+	return &ShipPositionStyle{SpecialSprites: spriteSet.SpecialSheet, DotSprites: spriteSet.DotSheet}
 }
 
 // ShipPositionStyle renders the currently known ship tracks and positions into the
@@ -134,7 +134,7 @@ func (style *ShipPositionStyle) renderPath(view *views.View, history *ShipHistor
 
 	hue := shipTypeToHue(history)
 	var srcRect *sdl.Rect
-	var tex *views.SpriteSheet
+	var tex *sdl.Texture
 	var ok bool
 	if hue == views.UnknownHue {
 		tex = style.SpecialSprites.Texture

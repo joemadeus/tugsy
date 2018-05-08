@@ -5,7 +5,6 @@ import (
 
 	"github.com/andmarios/aislib"
 	"github.com/joemadeus/tugsy/tugsy/config"
-	"github.com/joemadeus/tugsy/tugsy/shipdata"
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -30,11 +29,6 @@ type ViewSet struct {
 
 	index int
 	Views []*View
-
-	DotSprites   *DotSheet
-	SpecialSheet *SpecialSheet
-	FlagSheet    *FlagSheet
-	PaneSprites  *PaneSheet
 }
 
 type ViewConfig struct {
@@ -45,7 +39,7 @@ type ViewConfig struct {
 	West    float64
 }
 
-func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *config.Config) (*ViewSet, error) {
+func ViewSetFromConfig(screenRenderer *sdl.Renderer, renderSet []Render, config *config.Config) (*ViewSet, error) {
 	if config.IsSet("views") == false {
 		return nil, NoViewConfigFound
 	}
@@ -56,40 +50,9 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *config.Config) (*Vi
 		return nil, err
 	}
 
-	dots, err := NewDotSheet(screenRenderer, config)
-	if err != nil {
-		logger.Fatal("could not init the dots sprites", "error", err)
-		return nil, err
-	}
-
-	special, err := NewSpecialSheet(screenRenderer, config)
-	if err != nil {
-		logger.Fatal("could not init the special sprites", "error", err)
-		return nil, err
-	}
-
-	//flags, err := NewFlagSheet(screenRenderer, config)
-	//if err != nil {
-	//	logger.Fatal("could not init the flags sprites", "error", err)
-	//	return nil, err
-	//}
-
-	panes, err := NewPaneSheet(screenRenderer, config)
-	if err != nil {
-		logger.Fatal("could not init the panes sprites", "error", err)
-		return nil, err
-	}
-
-	renderset := []Render{
-		shipdata.NewShipHistoryRenderStyle(screenRenderer, dots, special),
-	}
-
 	viewSet := &ViewSet{
-		index:        0,
-		Views:        make([]*View, 0),
-		DotSprites:   dots,
-		SpecialSheet: special,
-		PaneSprites:  panes,
+		index: 0,
+		Views: make([]*View, 0),
 	}
 
 	for _, viewConfig := range viewConfigs {
@@ -111,7 +74,7 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, config *config.Config) (*Vi
 			BaseMap:        baseMap,
 			ViewName:       viewConfig.MapName,
 			ScreenRenderer: screenRenderer,
-			Renderset:      renderset,
+			Renderset:      renderSet,
 		}
 
 		viewSet.Views = append(viewSet.Views, view)

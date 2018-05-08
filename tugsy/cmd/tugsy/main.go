@@ -6,6 +6,7 @@ import (
 
 	"github.com/andmarios/aislib"
 	"github.com/joemadeus/tugsy/tugsy/config"
+	"github.com/joemadeus/tugsy/tugsy/portdata"
 	"github.com/joemadeus/tugsy/tugsy/shipdata"
 	"github.com/joemadeus/tugsy/tugsy/views"
 	image "github.com/veandco/go-sdl2/img"
@@ -22,7 +23,7 @@ import (
 // * UI loop
 
 const (
-	targetFPS uint32 = 30
+	targetFPS uint32 = 15
 )
 
 type State struct {
@@ -94,8 +95,25 @@ func run() int {
 	screenRenderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
 
 	logger.Info("Initializing view resources")
+	spriteSet, err := views.NewSpriteSet(screenRenderer, cfg)
+	if err != nil {
+		logger.Fatal("Could not load sprites from config", "err", err)
+		return 1
+	}
 
-	viewSet, err := views.ViewSetFromConfig(screenRenderer, cfg)
+	portInfoRenderStyle := portdata.NewPortInfoStyle()
+	infoPane, err := views.NewInfoPaneRenderStyle(portInfoRenderStyle, spriteSet)
+	if err != nil {
+		logger.Fatal("Could not load the base info pane", "err", err)
+		return 1
+	}
+
+	renderSet := []views.Render{
+		shipdata.NewShipHistoryRenderStyle(screenRenderer, spriteSet),
+		infoPane,
+	}
+
+	viewSet, err := views.ViewSetFromConfig(screenRenderer, renderSet, cfg)
 	if err != nil {
 		logger.Fatal("Could not load views from config", "err", err)
 		return 1
