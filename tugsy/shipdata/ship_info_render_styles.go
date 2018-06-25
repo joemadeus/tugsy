@@ -11,15 +11,13 @@ type ShipInfoStyle struct {
 	aisData AISData
 	MMSI    uint32
 
-	InfoPane  *views.InfoPaneStyle
 	FlagSheet *views.FlagSheet
 }
 
-func NewShipInfoStyle(infoPane *views.InfoPaneStyle, spriteSet *views.SpriteSet) *ShipInfoStyle {
+func NewShipInfoStyle(spriteSet *views.SpriteSet) (*ShipInfoStyle, error) {
 	return &ShipInfoStyle{
-		InfoPane:  infoPane,
 		FlagSheet: spriteSet.FlagSheet,
-	}
+	}, nil
 }
 
 func (style *ShipInfoStyle) SetMMSI(mmsi uint32) {
@@ -30,15 +28,11 @@ func (style *ShipInfoStyle) SetMMSI(mmsi uint32) {
 // registration (including flag), name, current destination and current situation
 // (moored, underway, etc) into the info pane
 func (style *ShipInfoStyle) Render(view *views.View) error {
-	_, ok := style.aisData.GetShipHistory(style.MMSI)
-	if ok == false {
+	if _, ok := style.aisData.GetShipHistory(style.MMSI); ok == false {
 		return errors.New(fmt.Sprintf("vessel disappeared before displaying info pane: mmsi %s", style.MMSI))
 	}
 
-	err := style.InfoPane.Render(view)
-	if err != nil {
-		return err
-	}
+	// TODO
 
 	return nil
 }

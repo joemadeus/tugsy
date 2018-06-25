@@ -1,51 +1,89 @@
 package views
 
 import (
-	"errors"
 	"sync"
 
+	"github.com/joemadeus/tugsy/tugsy/config"
+	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 const (
-	infoPaneX = 230
-	infoPaneY = 670
-	infoPaneH = 120
-	infoPaneW = 240
+	infoBackgroundFile = "infoBackground.png"
+	infoBorderFile     = "infoBorder.png"
+
+	infoPaneDstX = 230
+	infoPaneDstY = 670
+	infoPaneSrcX = 0
+	infoPaneSrcY = 0
+	infoPaneH    = 256
+	infoPaneW    = 192
 )
 
+// A PaneRenderStyle has a base graphic with static size and position, onto/into which
+// other graphics are overlaid
 type PaneRenderStyle struct {
 	sync.Mutex
-	*PaneSheet
-	Sheet   *SpriteSheet
-	SrcRect *sdl.Rect
-	DstRect *sdl.Rect
+
+	BackgroundTexture *sdl.Texture
+	CurrentRender     Render
+	ForegroundBorder  *sdl.Texture
+
+	BaseSrcRect *sdl.Rect
+	BaseDstRect *sdl.Rect
 }
 
-// An InfoPaneStyle creates the pane on which port, weather, ship and other
-// information is presented
-type InfoPaneStyle struct {
-	*PaneRenderStyle
-	CurrentlyDisplayed Render
-}
-
-func NewInfoPaneRenderStyle(startingDisplay Render, spriteSet *SpriteSet) (*InfoPaneStyle, error) {
-	logger.Info("Loading info pane style")
-	srcRect, ok := spriteSet.PaneSheet.getSprite("info")
-	if ok == false {
-		return nil, errors.New("couldn't load the info pane -- no 'info' sprite")
+func (style *PaneRenderStyle) Render(view *View) error {
+	var err error
+	if style.BackgroundTexture != nil {
+		if err = view.ScreenRenderer.Copy(style.BackgroundTexture, style.BaseSrcRect, style.BaseDstRect); err != nil {
+			return err
+		}
 	}
 
-	return &InfoPaneStyle{
-		PaneRenderStyle: &PaneRenderStyle{
-			PaneSheet: spriteSet.PaneSheet,
-			SrcRect:   srcRect,
-			DstRect:   &sdl.Rect{X: infoPaneX, Y: infoPaneY, H: infoPaneH, W: infoPaneW},
-		},
-		CurrentlyDisplayed: startingDisplay,
-	}, nil
+	style.Lock()
+	if err = style.CurrentRender.Render(view); err != nil {
+		return err
+	}
+	style.Unlock()
+
+	if style.ForegroundBorder != nil {
+		if err = view.ScreenRenderer.Copy(style.ForegroundBorder, style.BaseSrcRect, style.BaseDstRect); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (style *InfoPaneStyle) Render(view *View) error {
-	return view.ScreenRenderer.Copy(style.Sheet.Texture, style.SrcRect, style.DstRect)
+func (style *PaneRenderStyle) GetBounds() *sdl.Rect {
+	return style.BaseDstRect
+}
+
+func (style *PaneRenderStyle) ReplaceContent(newRender Render) {
+	style.Lock()
+	defer style.Unlock()
+	style.CurrentRender = newRender
+}
+
+func NewInfoPaneRenderStyle(screenRenderer *sdl.Renderer, config *config.Config) (*PaneRenderStyle, error) {
+	logger.Info("Loading info pane style")
+	backgroundTex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(infoBackgroundFile))
+	if err != nil {
+		return nil, err
+	}
+
+	borderTex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(infoBorderFile))
+	if err != nil {
+		return nil, err
+	}
+
+	return &PaneRenderStyle{
+		BackgroundTexture: backgroundTex,
+		ForegroundBorder:  borderTex,
+
+		BaseSrcRect:   &sdl.Rect{X: infoPaneSrcX, Y: infoPaneSrcY, H: infoPaneH, W: infoPaneW},
+		BaseDstRect:   &sdl.Rect{X: infoPaneDstX, Y: infoPaneDstY, H: infoPaneH, W: infoPaneW},
+		CurrentRender: &EmptyRenderStyle{},
+	}, nil
 }

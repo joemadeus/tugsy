@@ -2,6 +2,7 @@ package shipdata
 
 import (
 	"github.com/joemadeus/tugsy/tugsy/views"
+	"github.com/mgutz/logxi/v1"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -138,14 +139,14 @@ func (style *ShipPositionStyle) renderPath(view *views.View, history *ShipHistor
 	var ok bool
 	if hue == views.UnknownHue {
 		tex = style.SpecialSprites.Texture
-		srcRect, ok = style.SpecialSprites.GetSprite("unknown")
-		if ok == false {
+		if srcRect, ok = style.SpecialSprites.GetSprite("unknown"); ok == false {
+			log.Warn("unknown special sprite 'unknown'")
 			return
 		}
 	} else {
 		tex = style.DotSprites.Texture
-		srcRect, ok = style.DotSprites.GetSprite(hue, "normal")
-		if ok == false {
+		if srcRect, ok = style.DotSprites.GetSprite(hue, "normal"); ok == false {
+			log.Warn("unknown dot sprite", "hue", hue)
 			return
 		}
 	}
@@ -154,9 +155,7 @@ func (style *ShipPositionStyle) renderPath(view *views.View, history *ShipHistor
 
 	// TODO: Set hazardous cargo markers
 
-	err := view.ScreenRenderer.Copy(
-		tex, srcRect, toDestRect(&baseMapPosition, defaultDestSpriteSizePixels))
-	if err != nil {
+	if err := view.ScreenRenderer.Copy(tex, srcRect, toDestRect(&baseMapPosition, defaultDestSpriteSizePixels)); err != nil {
 		logger.Warn("rendering CurrentPositionByType", "error", err)
 	}
 }
@@ -184,13 +183,11 @@ func (style *ShipPositionStyle) renderCurrentPosition(view *views.View, history 
 	}
 
 	view.ScreenRenderer.SetDrawColor(r, g, b, trackAlpha)
-	err := view.ScreenRenderer.DrawLines(sdlPoints)
-	if err != nil {
+	if err := view.ScreenRenderer.DrawLines(sdlPoints); err != nil {
 		logger.Warn("rendering track lines MarkPathByType", "error", err)
 	}
 
-	err = view.ScreenRenderer.DrawRects(sdlRects)
-	if err != nil {
+	if err := view.ScreenRenderer.DrawRects(sdlRects); err != nil {
 		logger.Warn("rendering track points MarkPathByType", "error", err)
 	}
 }

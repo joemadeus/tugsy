@@ -8,17 +8,16 @@ import (
 
 const (
 	defaultSpriteSizePixels = 40
-	dotsSpritesFile         = "dots-normal.png"
-	specialSpritesFile      = "special.png"
-	flagsSpritesFile        = "flags.png"
-	panesSpritesFile        = "panes.png"
+
+	dotsSpritesFile    = "dots-normal.png"
+	specialSpritesFile = "special.png"
+	flagsSpritesFile   = "flags.png"
 )
 
 type SpriteSet struct {
 	DotSheet     *DotSheet
 	SpecialSheet *SpecialSheet
 	FlagSheet    *FlagSheet
-	PaneSheet    *PaneSheet
 }
 
 func NewSpriteSet(screenRenderer *sdl.Renderer, config *config.Config) (*SpriteSet, error) {
@@ -40,16 +39,9 @@ func NewSpriteSet(screenRenderer *sdl.Renderer, config *config.Config) (*SpriteS
 	//	return nil, err
 	//}
 
-	panes, err := NewPaneSheet(screenRenderer, config)
-	if err != nil {
-		logger.Fatal("could not init the panes sprites", "error", err)
-		return nil, err
-	}
-
 	return &SpriteSet{
 		DotSheet:     dots,
 		SpecialSheet: special,
-		PaneSheet:    panes,
 	}, nil
 }
 
@@ -175,38 +167,4 @@ func NewFlagSheet(screenRenderer *sdl.Renderer, config *config.Config) (*FlagShe
 	flags.Texture = tex
 
 	return flags, nil
-}
-
-type PaneSheet struct {
-	SpriteSheet
-	PaneMap map[string]int32
-}
-
-func NewPaneSheet(screenRenderer *sdl.Renderer, config *config.Config) (*PaneSheet, error) {
-	logger.Info("Loading sprites \"Panes\"")
-
-	tex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(panesSpritesFile))
-	if err != nil {
-		return nil, err
-	}
-
-	panes := &PaneSheet{}
-	panes.Texture = tex
-	panes.SpriteSize = 128
-
-	panes.PaneMap = make(map[string]int32)
-	panes.PaneMap["info"] = int32(0)
-	panes.PaneMap["tidebar"] = int32(1)
-	panes.PaneMap["skycolor"] = int32(2)
-	panes.PaneMap["wx_hazard"] = int32(3)
-
-	return panes, nil
-}
-
-func (panes *PaneSheet) getSprite(spriteName string) (*sdl.Rect, bool) {
-	row, ok := panes.PaneMap[spriteName]
-	if ok == false {
-		return nil, false
-	}
-	return panes.getSourceRect(row, 0), true
 }

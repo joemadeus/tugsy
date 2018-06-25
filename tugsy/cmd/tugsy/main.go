@@ -101,12 +101,13 @@ func run() int {
 		return 1
 	}
 
-	portInfoRenderStyle := portdata.NewPortInfoStyle()
-	infoPane, err := views.NewInfoPaneRenderStyle(portInfoRenderStyle, spriteSet)
+	infoPane, err := views.NewInfoPaneRenderStyle(screenRenderer, cfg)
 	if err != nil {
 		logger.Fatal("Could not load the base info pane", "err", err)
 		return 1
 	}
+	// initial display for the info pane: PVD's port data
+	infoPane.ReplaceContent(portdata.NewPortInfoStyle("PVD"))
 
 	renderSet := []views.Render{
 		shipdata.NewShipHistoryRenderStyle(screenRenderer, spriteSet),
@@ -154,6 +155,7 @@ func run() int {
 		switch t := event.(type) {
 		case *sdl.QuitEvent:
 			returnCode = 0
+			continue
 		case *sdl.KeyDownEvent:
 			switch t.Keysym.Sym {
 			case sdl.K_SPACE:

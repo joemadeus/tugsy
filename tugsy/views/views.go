@@ -20,6 +20,12 @@ type Render interface {
 	Render(view *View) error
 }
 
+type EmptyRenderStyle struct{}
+
+func (e *EmptyRenderStyle) Render(view *View) error {
+	return nil
+}
+
 var NoViewConfigFound = errors.New("could not find view configs")
 
 type Hue uint16
