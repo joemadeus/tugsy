@@ -2,7 +2,7 @@ package shipdata
 
 import (
 	"github.com/joemadeus/tugsy/tugsy/views"
-	"github.com/mgutz/logxi/v1"
+	logger "github.com/sirupsen/logrus"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -80,33 +80,26 @@ func shipTypeToHue(history *ShipHistory) views.Hue {
 		return views.UnknownHue // other
 	}
 
-	logger.Warn("Mapping an unhandled ship type", "type num", history.voyagedata.ShipType)
+	logger.WithField("type num", history.voyagedata.ShipType).Warn("mapping an unhandled ship type")
 	return 0
 }
 
-type NullRenderStyle struct{}
-
-func (style *NullRenderStyle) Render(view *views.View) func() {
-	return func() {}
-}
-
-type ShipPositionStyle struct {
-	aisData        AISData
+type ShipPositionElement struct {
+	aisData        *AISData
 	SpecialSprites *views.SpecialSheet
 	DotSprites     *views.DotSheet
 }
 
-func NewShipHistoryRenderStyle(screenRenderer *sdl.Renderer, spriteSet *views.SpriteSet) *ShipPositionStyle {
-	logger.Info("init ship history render")
-	return &ShipPositionStyle{SpecialSprites: spriteSet.SpecialSheet, DotSprites: spriteSet.DotSheet}
+func NewShipPositionElement(ais *AISData, spriteSet *views.SpriteSet) *ShipPositionElement {
+	logger.Info("Loading 'Ship Position' element")
+	return &ShipPositionElement{aisData: ais, SpecialSprites: spriteSet.SpecialSheet, DotSprites: spriteSet.DotSheet}
 }
 
-// ShipPositionStyle renders the currently known ship tracks and positions into the
-// map area
-func (style *ShipPositionStyle) Render(view *views.View) error {
-	for _, mmsi := range style.aisData.GetHistoryMMSIs() {
+// ShipPositionElement renders ship tracks and positions
+func (ele *ShipPositionElement) Render(view *views.View) error {
+	for _, mmsi := range ele.aisData.GetHistoryMMSIs() {
 		// lock held in GetShipHistory
-		history, ok := style.aisData.GetShipHistory(mmsi)
+		history, ok := ele.aisData.GetShipHistory(mmsi)
 
 		if ok == false {
 			logger.Debug("history has vanished", "mmsi", mmsi)
@@ -119,8 +112,8 @@ func (style *ShipPositionStyle) Render(view *views.View) error {
 			continue
 		}
 
-		style.renderPath(view, history)
-		style.renderCurrentPosition(view, history)
+		ele.renderPath(view, history)
+		ele.renderCurrentPosition(view, history)
 
 		history.dirty = false
 		history.Unlock()
@@ -129,25 +122,23 @@ func (style *ShipPositionStyle) Render(view *views.View) error {
 	return nil
 }
 
-func (style *ShipPositionStyle) renderPath(view *views.View, history *ShipHistory) {
+func (ele *ShipPositionElement) renderPath(view *views.View, history *ShipHistory) error {
 	currentPosition := history.positions[len(history.positions)-1]
 	baseMapPosition := view.GetBaseMapPosition(currentPosition.GetPositionReport())
 
 	hue := shipTypeToHue(history)
-	var srcRect *sdl.Rect
-	var tex *sdl.Texture
-	var ok bool
+	var sprite *views.Sprite
+	var err error
 	if hue == views.UnknownHue {
-		tex = style.SpecialSprites.Texture
-		if srcRect, ok = style.SpecialSprites.GetSprite("unknown"); ok == false {
-			log.Warn("unknown special sprite 'unknown'")
-			return
+		// return the special "unknown" dot
+		if sprite, err = ele.SpecialSprites.GetSprite("unknown"); err != nil {
+			logger.WithError(err).Error("could not load special sprite 'unknown'")
+			return err
 		}
 	} else {
-		tex = style.DotSprites.Texture
-		if srcRect, ok = style.DotSprites.GetSprite(hue, "normal"); ok == false {
-			log.Warn("unknown dot sprite", "hue", hue)
-			return
+		if sprite, err = ele.DotSprites.GetSprite(hue, "normal"); err != nil {
+			logger.WithError(err).Errorf("could not load sprite with hue %v", hue)
+			return err
 		}
 	}
 
@@ -155,12 +146,15 @@ func (style *ShipPositionStyle) renderPath(view *views.View, history *ShipHistor
 
 	// TODO: Set hazardous cargo markers
 
-	if err := view.ScreenRenderer.Copy(tex, srcRect, toDestRect(&baseMapPosition, defaultDestSpriteSizePixels)); err != nil {
-		logger.Warn("rendering CurrentPositionByType", "error", err)
+	if err := view.ScreenRenderer.Copy(sprite.Texture, sprite.Rect, toDestRect(&baseMapPosition, defaultDestSpriteSizePixels)); err != nil {
+		logger.WithError(err).Error("rendering ship paths")
+		return err
 	}
+
+	return nil
 }
 
-func (style *ShipPositionStyle) renderCurrentPosition(view *views.View, history *ShipHistory) {
+func (ele *ShipPositionElement) renderCurrentPosition(view *views.View, history *ShipHistory) error {
 	trackPointsSize := int32(4)
 	trackAlpha := uint8(128)
 
@@ -182,12 +176,20 @@ func (style *ShipPositionStyle) renderCurrentPosition(view *views.View, history 
 		}
 	}
 
-	view.ScreenRenderer.SetDrawColor(r, g, b, trackAlpha)
+	if err := view.ScreenRenderer.SetDrawColor(r, g, b, trackAlpha); err != nil {
+		logger.WithError(err).Warn("setting the draw color")
+		return err
+	}
+
 	if err := view.ScreenRenderer.DrawLines(sdlPoints); err != nil {
-		logger.Warn("rendering track lines MarkPathByType", "error", err)
+		logger.WithError(err).Warn("rendering track lines")
+		return err
 	}
 
 	if err := view.ScreenRenderer.DrawRects(sdlRects); err != nil {
-		logger.Warn("rendering track points MarkPathByType", "error", err)
+		logger.WithError(err).Warn("rendering track points")
+		return err
 	}
+
+	return nil
 }

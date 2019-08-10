@@ -23,9 +23,11 @@ func NewMockPositionReport(receivedTime time.Time, mmsi uint32) *MockPositionRep
 func (m *MockPositionReport) GetPositionReport() *aislib.PositionReport {
 	return m.positionReport
 }
+
 func (m *MockPositionReport) GetSource() string {
 	return "test"
 }
+
 func (m *MockPositionReport) GetReceivedTime() time.Time {
 	return m.receivedTime
 }
@@ -89,37 +91,4 @@ func TestGetPositionReports(t *testing.T) {
 	sh.addPosition(posOne)
 	sh.addPosition(posTwo)
 	sh.dirty = false
-}
-
-func TestTranslatePositionReports(t *testing.T) {
-	now := time.Now()
-	mmsi := uint32(123)
-	aisData := NewAISData()
-	aisData.AddPosition(NewMockPositionReport(now, mmsi))
-	aisData.AddPosition(NewMockPositionReport(now, mmsi))
-
-	mmsis := aisData.GetHistoryMMSIs()
-	assert.Equal(t, 1, len(mmsis))
-	assert.Equal(t, mmsi, mmsis[0])
-	assert.True(t, aisData.Dirty)
-
-	shipHistory, ok := aisData.GetShipHistory(mmsi)
-	assert.True(t, ok)
-	assert.Equal(t, 2, len(shipHistory.positions))
-
-	translateOut := make([]uint32, 0, 2)
-	translate := func(positionReports []Positionable) {
-		for i, val := range positionReports {
-			translateOut = append(translateOut, val.GetPositionReport().MMSI*uint32(i+2))
-		}
-	}
-
-	translateReturn := aisData.TranslatePositionReports(987, translate)
-	assert.False(t, translateReturn)
-
-	translateReturn = aisData.TranslatePositionReports(mmsi, translate)
-	assert.True(t, translateReturn)
-	assert.Equal(t, 2, len(translateOut))
-	assert.Equal(t, uint32(246), translateOut[0])
-	assert.Equal(t, uint32(369), translateOut[1])
 }

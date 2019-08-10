@@ -1,5 +1,9 @@
 package views
 
+import logger "github.com/sirupsen/logrus"
+
+type Hue uint16
+
 const (
 	UnknownHue = Hue(361)
 	UnknownR   = 128
@@ -10,30 +14,30 @@ const (
 // Returns the RGB values for the given hue, assuming saturation and value
 // equal to 1.0. This is a simplification of the general formula, with C
 // equal to 1 and m equal to 0.
-//func computeRGB(hue Hue) (r, g, b uint8) {
+// func computeRGB(hue Hue) (r, g, b uint8) {
 //
-//	// X = C × (1 - |(H / 60°) mod 2 - 1|)
-//	x := 1 - math.Abs(hue/60.0 % 2 - 1)
-//	X := uint8(x * 255 + 0.5)
+// 	// X = C × (1 - |(H / 60°) mod 2 - 1|)
+// 	x := 1 - math.Abs(hue/60.0 % 2 - 1)
+// 	X := uint8(x * 255 + 0.5)
 //
-//	switch {
-//	case hue < 60:
-//		return 255, X, 0
-//	case hue < 120:
-//		return X, 255, 0
-//	case hue < 180:
-//		return 0, 255, X
-//	case hue < 240:
-//		return 0, X, 255
-//	case hue < 300:
-//		return X, 0, 255
-//	case hue <= 360:
-//		return 255, 0, X
-//	default:
-//		logger.Warn("Got an invalid hue value", "hue", hue)
-//		return 128, 128, 128
-//	}
-//}
+// 	switch {
+// 	case hue < 60:
+// 		return 255, X, 0
+// 	case hue < 120:
+// 		return X, 255, 0
+// 	case hue < 180:
+// 		return 0, 255, X
+// 	case hue < 240:
+// 		return 0, X, 255
+// 	case hue < 300:
+// 		return X, 0, 255
+// 	case hue <= 360:
+// 		return 255, 0, X
+// 	default:
+// 		logger.Warn("Got an invalid hue value", "hue", hue)
+// 		return 128, 128, 128
+// 	}
+// }
 
 // Maps the given Hue value to an RGB triplet, returning neutral gray if
 // Hue == 361 (an ordinarily invalid value)
@@ -78,7 +82,7 @@ func HueToRGB(hue Hue) (r, g, b uint8) {
 	case UnknownHue:
 		return UnknownR, UnknownG, UnknownB
 	default:
-		logger.Warn("Got an invalid hue value", "hue", hue)
+		logger.Warnf("Got an invalid hue value %v", hue)
 		return UnknownR, UnknownG, UnknownB
 	}
 }

@@ -6,9 +6,9 @@ import (
 
 	"github.com/andmarios/aislib"
 	"github.com/joemadeus/tugsy/tugsy/config"
-	"github.com/joemadeus/tugsy/tugsy/portdata"
 	"github.com/joemadeus/tugsy/tugsy/shipdata"
 	"github.com/joemadeus/tugsy/tugsy/views"
+	logger "github.com/sirupsen/logrus"
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -35,17 +35,21 @@ func run() int {
 	logger.Info("Loading config")
 	cfg, err := config.NewConfig()
 	if err != nil {
-		logger.Fatal("Could not load the config", "err", err)
+		logger.WithError(err).Fatal("Could not load the config")
 		return 1
 	}
+
+	positionData := shipdata.NewAISData()
+
+	logger.Info("Starting the position culling loop")
+	go positionData.PrunePositions()
 
 	logger.Info("Loading the AIS routers")
 	decoded := make(chan aislib.Message)
 	failed := make(chan aislib.FailedSentence)
 	routers, err := shipdata.RemoteAISServersFromConfig(decoded, failed, cfg)
 	if err != nil {
-		// TODO: This potentially leaves routers in a dirty state
-		logger.Fatal("Could not initialize the routers", "err", err)
+		logger.WithError(err).Fatal("Could not initialize the routers")
 		return 1
 	}
 
@@ -65,13 +69,10 @@ func run() int {
 		go r.DecodePositions(decoded, failed)
 	}
 
-	logger.Info("Starting the position culling loop")
-	go shipdata.PositionData.PrunePositions()
-
-	logger.Info("Initializing image.PNG")
+	logger.Info("Initializing INIT_PNG")
 	pngInit := image.Init(image.INIT_PNG)
 	if pngInit != image.INIT_PNG {
-		logger.Fatal("Failed to load INIT_PNG", "png_init", pngInit)
+		logger.Fatalf("failed to load INIT_PNG, instead got %v", pngInit)
 		return 1
 	}
 	defer image.Quit()
@@ -80,7 +81,7 @@ func run() int {
 	window, err := sdl.CreateWindow(
 		views.ScreenTitle, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, views.ScreenWidth, views.ScreenHeight, sdl.WINDOW_SHOWN)
 	if err != nil {
-		logger.Fatal("Failed to create window", "err", err)
+		logger.WithError(err).Fatal("failed to create window")
 		return 1
 	}
 	defer window.Destroy()
@@ -88,7 +89,7 @@ func run() int {
 	logger.Info("Creating screen renderer")
 	screenRenderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
 	if err != nil {
-		logger.Fatal("Failed to create renderer", "err", err)
+		logger.WithError(err).Fatal("failed to create renderer")
 		return 1
 	}
 	defer screenRenderer.Destroy()
@@ -97,35 +98,32 @@ func run() int {
 	logger.Info("Initializing view resources")
 	spriteSet, err := views.NewSpriteSet(screenRenderer, cfg)
 	if err != nil {
-		logger.Fatal("Could not load sprites from config", "err", err)
+		logger.WithError(err).Fatal("could not load sprites from config")
 		return 1
 	}
 
-	infoPane, err := views.NewInfoPaneRenderStyle(screenRenderer, cfg)
+	infoPane, err := views.NewInfoElement(screenRenderer, cfg)
 	if err != nil {
-		logger.Fatal("Could not load the base info pane", "err", err)
+		logger.WithError(err).Fatal("could not load the base info pane")
 		return 1
 	}
-	// initial display for the info pane: PVD's port data
-	infoPane.ReplaceContent(portdata.NewPortInfoStyle("PVD"))
 
-	renderSet := []views.Render{
-		shipdata.NewShipHistoryRenderStyle(screenRenderer, spriteSet),
+	renderSet := []views.ViewElement{
+		shipdata.NewShipPositionElement(positionData, spriteSet),
 		infoPane,
 	}
 
 	viewSet, err := views.ViewSetFromConfig(screenRenderer, renderSet, cfg)
 	if err != nil {
-		logger.Fatal("Could not load views from config", "err", err)
+		logger.WithError(err).Fatal("Could not load views from config")
 		return 1
 	}
-	defer viewSet.TeardownResources()
+	defer viewSet.Teardown()
 
 	logger.Info("Initializing the display")
 	currentView := viewSet.CurrentView()
-	err = currentView.Display()
-	if err != nil {
-		logger.Fatal("Could not initialize the display with the first view", "err", err)
+	if err = currentView.Display(); err != nil {
+		logger.WithError(err).Fatal("could not initialize the display with the first view")
 		return 1
 	}
 
@@ -143,8 +141,7 @@ func run() int {
 		ticks = sdl.GetTicks()
 
 		// See if we should quit on interrupt
-		select {
-		case <-signalChan:
+		if sig := <-signalChan; sig != nil {
 			logger.Info("Terminating on interrupt signal")
 			returnCode = 0
 			continue
@@ -156,17 +153,16 @@ func run() int {
 		case *sdl.QuitEvent:
 			returnCode = 0
 			continue
-		case *sdl.KeyDownEvent:
-			switch t.Keysym.Sym {
-			case sdl.K_SPACE:
+		case *sdl.KeyboardEvent:
+			switch {
+			case t.Keysym.Sym == sdl.K_SPACE && t.Type == sdl.KEYDOWN:
 				currentView = viewSet.NextView()
 			}
 		}
 
 		// Redisplay
-		err = currentView.Display()
-		if err != nil {
-			logger.Fatal("Could not refresh the display", "viewName", currentView.ViewName, "err", err)
+		if err = currentView.Display(); err != nil {
+			logger.WithError(err).Fatalf("Could not refresh the display, view %s", currentView.ViewName)
 			returnCode = 128
 			break
 		}

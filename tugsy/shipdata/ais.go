@@ -8,6 +8,7 @@ import (
 
 	"github.com/andmarios/aislib"
 	"github.com/joemadeus/tugsy/tugsy/config"
+	logger "github.com/sirupsen/logrus"
 )
 
 const (
@@ -78,9 +79,11 @@ type RemoteAISServer struct {
 
 	SourceName    string
 	HostColonPort string
-	conn          net.Conn
-	connAttempts  uint
-	running       bool
+
+	aisData      *AISData
+	conn         net.Conn
+	connAttempts uint
+	running      bool
 }
 
 func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.FailedSentence, config *config.Config) ([]*RemoteAISServer, error) {
@@ -112,31 +115,31 @@ func (router *RemoteAISServer) Start() {
 		for router.running {
 			serverAddr, err := net.ResolveTCPAddr("tcp", router.HostColonPort)
 			if err != nil {
-				logger.Warn("Could not resolve an AIS host", "error", err, "host", router.HostColonPort, "retrying in", connRetryTimeoutSecs)
+				logger.WithError(err).Warnf("could not resolve AIS host %s, retrying in %d secs", router.HostColonPort, connRetryTimeoutSecs)
 				router.connAttempts++
 				if router.connAttempts > connRetryAttempts {
-					logger.Error("Failing this AIS server", "host", router.HostColonPort)
+					logger.Errorf("failing this AIS server %s", router.HostColonPort)
 					router.Stop()
 					return
 				}
 				time.Sleep(timeoutSleep)
 				continue
 			}
-			logger.Info("Resolved", "host", router.HostColonPort)
+			logger.Infof("Resolved host %s", router.HostColonPort)
 
 			router.conn, err = net.DialTCP("tcp", nil, serverAddr)
 			if err != nil {
-				logger.Warn("Could not connect to an AIS host", "error", err, "host", router.HostColonPort, "retrying in", connRetryTimeoutSecs)
+				logger.WithError(err).Warnf("could not connect to AIS host %s, retrying in %d secs", router.HostColonPort, connRetryTimeoutSecs)
 				router.connAttempts++
 				if router.connAttempts > connRetryAttempts {
-					logger.Error("Failing this AIS server", "host", router.HostColonPort)
+					logger.Errorf("failing this AIS server %s", router.HostColonPort)
 					router.Stop()
 					return
 				}
 				time.Sleep(timeoutSleep)
 				continue
 			}
-			logger.Info("Dialed", "host", router.HostColonPort)
+			logger.Infof("Dialed host %+v", router.HostColonPort)
 
 			router.connAttempts = 0
 
@@ -146,11 +149,13 @@ func (router *RemoteAISServer) Start() {
 				router.inStrings <- connbuf.Text()
 			}
 
-			router.conn.Close()
-			logger.Warn("Connection broken/not established", "host", router.HostColonPort, "retrying in", connRetryTimeoutSecs)
+			if err := router.conn.Close(); err != nil {
+				logger.WithError(err).Error("while closing router")
+			}
+			logger.Warnf("connection broken/not established to host %s, retrying in %d secs", router.HostColonPort, connRetryTimeoutSecs)
 			time.Sleep(timeoutSleep)
 		}
-		logger.Info("Router reconnect loop exiting")
+		logger.Info("router reconnect loop exiting")
 	}()
 }
 
@@ -159,7 +164,7 @@ func (router *RemoteAISServer) Stop() {
 }
 
 func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, failed chan aislib.FailedSentence) {
-	logger.Info("Starting AIS loop ", "source", router.SourceName)
+	logger.Infof("Starting AIS loop, source %s", router.SourceName)
 	for {
 		select {
 		case message := <-decoded:
@@ -167,59 +172,59 @@ func (router *RemoteAISServer) DecodePositions(decoded chan aislib.Message, fail
 			case 1, 2, 3:
 				t, err := aislib.DecodeClassAPositionReport(message.Payload)
 				if err != nil {
-					logger.Warn("Decoding class A report", "err", err)
+					logger.WithError(err).Warn("decoding class A report")
 					break
 				}
 				report := &SourcedClassAPositionReport{t, SourceAndTime{router.SourceName, time.Now()}}
-				logger.Trace("New type A position", "position", report)
-				PositionData.AddPosition(report)
+				logger.Debugf("New type A position '%+v'", report)
+				router.aisData.AddPosition(report)
 
 			case 4:
 				t, err := aislib.DecodeBaseStationReport(message.Payload)
 				if err != nil {
-					logger.Warn("Decoding base station report", "err", err)
+					logger.WithError(err).Warn("decoding base station report")
 					break
 				}
 				report := &SourcedBaseStationReport{t, SourceAndTime{router.SourceName, time.Now()}}
-				logger.Trace("New base station data", "data", report)
-				PositionData.UpdateBaseStationReport(report)
+				logger.Debugf("New base station data '%+v'", report)
+				router.aisData.UpdateBaseStationReport(report)
 
 			case 5:
 				t, err := aislib.DecodeStaticVoyageData(message.Payload)
 				if err != nil {
-					logger.Warn("Decoding voyage data", "err", err)
+					logger.WithError(err).Warn("decoding voyage data")
 					break
 				}
 				report := &SourcedStaticVoyageData{t, SourceAndTime{router.SourceName, time.Now()}}
-				logger.Trace("New voyage data", "data", report)
-				PositionData.UpdateStaticVoyageData(report)
+				logger.Debugf("New voyage data '%+v'", report)
+				router.aisData.UpdateStaticVoyageData(report)
 
 			case 8:
 				t, err := aislib.DecodeBinaryBroadcast(message.Payload)
 				if err != nil {
-					logger.Warn("Decoding binary broadcast", "err", err)
+					logger.WithError(err).Warn("decoding binary broadcast")
 					break
 				}
 				report := &SourcedBinaryBroadcast{t, SourceAndTime{router.SourceName, time.Now()}}
-				logger.Trace("New binary broadcast", "data", report)
-				PositionData.UpdateBinaryBroadcast(report)
+				logger.Debugf("New binary broadcast '%+v'", report)
+				router.aisData.UpdateBinaryBroadcast(report)
 
 			case 18:
 				t, err := aislib.DecodeClassBPositionReport(message.Payload)
 				if err != nil {
-					logger.Warn("Decoding class B report", "err", err)
+					logger.WithError(err).Warn("decoding class B report")
 					break
 				}
 				report := &SourcedClassBPositionReport{t, SourceAndTime{router.SourceName, time.Now()}}
-				logger.Trace("New type B position", "position", report)
-				PositionData.AddPosition(report)
+				logger.Debugf("New type B position '%+v'", report)
+				router.aisData.AddPosition(report)
 
 			default:
-				logger.Debug("Unsupported message type", "type", message.Type)
+				logger.Debugf("Unsupported message type %d", message.Type)
 			}
 
 		case problematic := <-failed:
-			logger.Debug("Failed message", "issue", problematic.Issue, "sentence", problematic.Sentence)
+			logger.Debugf("Failed message, issue %s, sentence %s", problematic.Issue, problematic.Sentence)
 		}
 	}
 }

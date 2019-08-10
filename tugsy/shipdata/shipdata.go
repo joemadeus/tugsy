@@ -3,87 +3,97 @@ package shipdata
 import (
 	"sync"
 	"time"
+
+	logger "github.com/sirupsen/logrus"
 )
 
 const (
-	defaultPositionRetentionTime   = 12 * time.Hour
+	defaultPositionRetentionDur    = 12 * time.Hour
 	defaultPositionCullingInterval = 5 * time.Second
 )
 
 type ShipHistory struct {
+	sync.Mutex
+
 	// append new positions to the end
 	positions  []Positionable
 	voyagedata *SourcedStaticVoyageData
 	dirty      bool
-	sync.Mutex
 }
 
 func NewShipHistory() *ShipHistory {
 	return &ShipHistory{positions: make([]Positionable, 0)}
 }
 
-func (history *ShipHistory) addPosition(report Positionable) {
-	// mutex held by calling code
-	history.positions = append(history.positions, report)
-	history.dirty = true
+func (h *ShipHistory) addPosition(report Positionable) {
+	h.Lock()
+	defer h.Unlock()
+
+	h.positions = append(h.positions, report)
+	h.dirty = true
 }
 
-func (history *ShipHistory) prune(since time.Time) {
-	// mutex held by calling code
+func (h *ShipHistory) setVoyageData(d *SourcedStaticVoyageData) {
+	h.Lock()
+	defer h.Unlock()
+
+	h.voyagedata = d
+}
+
+func (h *ShipHistory) prune(since time.Time) {
+	h.Lock()
+	defer h.Unlock()
 
 	// shortcut -- test the first element. if it's after 'since', just return the original
 	// slice and don't flag 'dirty'
-	if len(history.positions) == 0 || history.positions[0].GetReceivedTime().After(since) {
+	if len(h.positions) == 0 || h.positions[0].GetReceivedTime().After(since) {
 		return
 	}
 
-	history.dirty = true
+	h.dirty = true
 
 	var a int
 	var position Positionable
-	for a, position = range history.positions {
+	for a, position = range h.positions {
 		if position.GetReceivedTime().After(since) {
 			break
 		}
 	}
 
-	var newSlice []Positionable
-	history.positions = append(newSlice, history.positions[a:]...)
-}
-
-var PositionData = &AISData{
-	mmsiHistories:    make(map[uint32]*ShipHistory),
-	mmsiBaseStations: make(map[uint32]*SourcedBaseStationReport),
-	mmsiBinaryData:   make(map[uint32]*SourcedBinaryBroadcast),
-
-	positionRetentionTime:   defaultPositionRetentionTime,
-	positionCullingInterval: defaultPositionCullingInterval,
+	h.positions = h.positions[a:]
 }
 
 type AISData struct {
+	sync.Mutex
+
 	mmsiHistories    map[uint32]*ShipHistory
 	mmsiBaseStations map[uint32]*SourcedBaseStationReport
 	mmsiBinaryData   map[uint32]*SourcedBinaryBroadcast
 
-	positionRetentionTime   time.Duration
+	positionRetentionDur    time.Duration
 	positionCullingInterval time.Duration
+}
 
-	sync.Mutex
+func NewAISData() *AISData {
+	return &AISData{
+		mmsiHistories:    make(map[uint32]*ShipHistory),
+		mmsiBaseStations: make(map[uint32]*SourcedBaseStationReport),
+		mmsiBinaryData:   make(map[uint32]*SourcedBinaryBroadcast),
+
+		positionRetentionDur:    defaultPositionRetentionDur,
+		positionCullingInterval: defaultPositionCullingInterval,
+	}
 }
 
 func (aisData *AISData) AddPosition(report Positionable) {
-	aisData.Lock()
 	history := aisData.getOrCreateShipHistory(report.GetPositionReport().MMSI)
-	aisData.Unlock()
-
-	history.Lock()
-	defer history.Unlock()
 	history.addPosition(report)
-	history.prune(aisData.getPruneSinceTime())
 }
 
 func (aisData *AISData) getOrCreateShipHistory(mmsi uint32) *ShipHistory {
-	// mutex held by calling code
+	aisData.Lock()
+	defer aisData.Unlock()
+
 	history, ok := aisData.mmsiHistories[mmsi]
 	if ok == false {
 		history = NewShipHistory()
@@ -94,13 +104,8 @@ func (aisData *AISData) getOrCreateShipHistory(mmsi uint32) *ShipHistory {
 }
 
 func (aisData *AISData) UpdateStaticVoyageData(data *SourcedStaticVoyageData) {
-	aisData.Lock()
 	history := aisData.getOrCreateShipHistory(data.MMSI)
-	aisData.Unlock()
-
-	history.Lock()
-	defer history.Unlock()
-	history.voyagedata = data
+	history.setVoyageData(data)
 }
 
 func (aisData *AISData) UpdateBaseStationReport(report *SourcedBaseStationReport) {
@@ -123,16 +128,16 @@ func (aisData *AISData) PrunePositions() {
 	for {
 		select {
 		case <-cullChan:
-			logger.Trace("Culling positions")
+			logger.Debug("culling positions")
 			// make a copy of the keyset so we don't have to maintain the lock on aisData.
 			// doing so means potentially examining only a subset of all the shipdata, but
 			// that's alright: this isn't toooo important a process & we'll get to the ones
 			// we miss next time
-			since := aisData.getPruneSinceTime()
+			since := time.Now().Add(-aisData.positionRetentionDur)
 			for _, mmsi := range aisData.GetHistoryMMSIs() {
 				history, ok := aisData.mmsiHistories[mmsi]
 				if ok == false {
-					logger.Debug("An MMSI was removed before we got could prune it", "MMSI", mmsi)
+					logger.Debugf("MMSI %d was removed before it could be pruned", mmsi)
 					continue
 				}
 
@@ -140,7 +145,7 @@ func (aisData *AISData) PrunePositions() {
 				history.prune(since)
 
 				if len(history.positions) == 0 {
-					logger.Info("A ship has not been heard from in a while. Removing.", "mmsi", mmsi)
+					logger.Infof("a ship has not been heard from in a while. Removing MMSI %v", mmsi)
 					delete(aisData.mmsiHistories, mmsi)
 				}
 
@@ -175,8 +180,4 @@ func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
 	} else {
 		return nil, ok
 	}
-}
-
-func (aisData *AISData) getPruneSinceTime() time.Time {
-	return time.Now().Add(aisData.positionRetentionTime * -1)
 }

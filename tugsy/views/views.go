@@ -5,6 +5,7 @@ import (
 
 	"github.com/andmarios/aislib"
 	"github.com/joemadeus/tugsy/tugsy/config"
+	logger "github.com/sirupsen/logrus"
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -16,26 +17,17 @@ const (
 	ScreenTitle  = "Tugsy"
 )
 
-type Render interface {
+type ViewElement interface {
 	Render(view *View) error
 }
 
-type EmptyRenderStyle struct{}
+type EmptyViewElement struct{}
 
-func (e *EmptyRenderStyle) Render(view *View) error {
+func (e *EmptyViewElement) Render(view *View) error {
 	return nil
 }
 
 var NoViewConfigFound = errors.New("could not find view configs")
-
-type Hue uint16
-
-type ViewSet struct {
-	resourceDir string
-
-	index int
-	Views []*View
-}
 
 type ViewConfig struct {
 	MapName string
@@ -45,7 +37,14 @@ type ViewConfig struct {
 	West    float64
 }
 
-func ViewSetFromConfig(screenRenderer *sdl.Renderer, renderSet []Render, config *config.Config) (*ViewSet, error) {
+type ViewSet struct {
+	resourceDir string
+
+	index int
+	Views []*View
+}
+
+func ViewSetFromConfig(screenRenderer *sdl.Renderer, elements []ViewElement, config *config.Config) (*ViewSet, error) {
 	if config.IsSet("views") == false {
 		return nil, NoViewConfigFound
 	}
@@ -62,7 +61,7 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, renderSet []Render, config 
 	}
 
 	for _, viewConfig := range viewConfigs {
-		logger.Info("Loading", "viewName", viewConfig.MapName)
+		logger.Infof("Loading view %s", viewConfig.MapName)
 		baseTexture, err := image.LoadTexture(screenRenderer, config.GetViewPath(viewConfig.MapName)+baseMapFile)
 		if err != nil {
 			return nil, err
@@ -80,7 +79,7 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, renderSet []Render, config 
 			BaseMap:        baseMap,
 			ViewName:       viewConfig.MapName,
 			ScreenRenderer: screenRenderer,
-			Renderset:      renderSet,
+			Elements:       elements,
 		}
 
 		viewSet.Views = append(viewSet.Views, view)
@@ -89,25 +88,30 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, renderSet []Render, config 
 	return viewSet, nil
 }
 
-func (viewSet *ViewSet) CurrentView() *View {
-	return viewSet.Views[viewSet.index]
+func (vs *ViewSet) CurrentView() *View {
+	return vs.Views[vs.index]
 }
 
-func (viewSet *ViewSet) NextView() *View {
-	if viewSet.index == len(viewSet.Views)-1 {
-		viewSet.index = 0
+func (vs *ViewSet) NextView() *View {
+	if vs.index == len(vs.Views)-1 {
+		vs.index = 0
 	} else {
-		viewSet.index += 1
+		vs.index += 1
 	}
-	return viewSet.Views[viewSet.index]
+	return vs.Views[vs.index]
 }
 
-func (viewSet *ViewSet) TeardownResources() {
+func (vs *ViewSet) Teardown() error {
 	logger.Info("Tearing down views")
-	for _, view := range viewSet.Views {
+	for _, view := range vs.Views {
 		logger.Info("Unloading view", view.ViewName)
-		view.BaseMap.Tex.Destroy()
+		if err := view.BaseMap.Tex.Destroy(); err != nil {
+			logger.WithError(err).Errorf("while tearing down view %s", view.ViewName)
+			// TODO
+		}
 	}
+
+	return nil
 }
 
 type View struct {
@@ -115,27 +119,27 @@ type View struct {
 	ViewName       string
 	ScreenRenderer *sdl.Renderer
 
-	Renderset []Render
+	Elements []ViewElement
 }
 
 // Clears the renderer and redisplays the screen using all the Renders in Renderset
 func (view *View) Display() error {
 	err := view.ScreenRenderer.Clear()
 	if err != nil {
-		logger.Warn("Could not clear the screen renderer", "err", err)
+		logger.WithError(err).Error("Could not clear the screen renderer")
 		return err
 	}
 
 	err = view.ScreenRenderer.Copy(view.BaseMap.Tex, nil, nil)
 	if err != nil {
-		logger.Warn("Could not copy the base map to the screen renderer", "err", err)
+		logger.WithError(err).Error("could not copy the base map to the screen renderer")
 		return err
 	}
 
-	for _, render := range view.Renderset {
-		err := render.Render(view)
+	for _, element := range view.Elements {
+		err := element.Render(view)
 		if err != nil {
-			logger.Warn("could not render", "error", err, "render", render)
+			logger.WithError(err).Error("could not render", "element", element)
 		}
 	}
 
@@ -144,8 +148,8 @@ func (view *View) Display() error {
 	return nil
 }
 
-// getBaseMapPosition returns the given real world position on the view's
-// base map using a simple linear approximation
+// GetBaseMapPosition estimates the given position report on the view's base map
+// using a simple linear approximation
 func (view *View) GetBaseMapPosition(position *aislib.PositionReport) BaseMapPosition {
 	return BaseMapPosition{
 		(position.Lon - view.SWGeo.X) / (view.NEGeo.X - view.SWGeo.X) * view.width,
