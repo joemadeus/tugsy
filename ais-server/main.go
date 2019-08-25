@@ -1,18 +1,17 @@
 package main
 
 import (
-	"flag"
-	"os"
-	"log"
 	"bufio"
-	"time"
-	"math/rand"
+	"flag"
 	"fmt"
+	"log"
+	"math/rand"
 	"net"
+	"os"
+	"time"
 )
 
 var (
-	positionFile     = flag.String("f", "", "The name of the file to read")
 	maxPositionSleep = flag.Float64("s", 3.0, "The max number of seconds to sleep between positions")
 	positionChan     = make(chan string)
 )
@@ -21,7 +20,7 @@ func main() {
 	flag.Parse()
 	rand.Seed(time.Now().UTC().UnixNano())
 
-	file, err := os.Open(*positionFile)
+	file, err := os.Open(flag.Arg(0))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,8 +44,8 @@ func main() {
 		select {
 		case position := <-positionChan:
 			fmt.Println(position)
-			conn.Write([]byte(position))
-			conn.Write([]byte("\n"))
+			_, _ = conn.Write([]byte(position))
+			_, _ = conn.Write([]byte("\n"))
 		}
 	}
 }
