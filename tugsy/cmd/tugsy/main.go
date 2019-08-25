@@ -2,14 +2,12 @@ package main
 
 import (
 	"os"
-	"os/signal"
 
 	"github.com/andmarios/aislib"
 	"github.com/joemadeus/tugsy/tugsy/config"
 	"github.com/joemadeus/tugsy/tugsy/shipdata"
 	"github.com/joemadeus/tugsy/tugsy/views"
 	logger "github.com/sirupsen/logrus"
-	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -25,10 +23,6 @@ import (
 const (
 	targetFPS uint32 = 15
 )
-
-type State struct {
-	running bool
-}
 
 func run() int {
 	logger.Info("Starting Tugsy")
@@ -50,7 +44,6 @@ func run() int {
 	routers, err := shipdata.RemoteAISServersFromConfig(decoded, failed, cfg)
 	if err != nil {
 		logger.WithError(err).Fatal("Could not initialize the routers")
-		return 1
 	}
 
 	defer func() {
@@ -69,43 +62,46 @@ func run() int {
 		go r.DecodePositions(decoded, failed)
 	}
 
-	logger.Info("Initializing INIT_PNG")
-	pngInit := image.Init(image.INIT_PNG)
-	if pngInit != image.INIT_PNG {
-		logger.Fatalf("failed to load INIT_PNG, instead got %v", pngInit)
+	logger.Info("Initializing INIT_EVERYTHING")
+	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
+		logger.WithError(err).Fatalf("failed to INIT_EVERYTHING")
 		return 1
 	}
-	defer image.Quit()
+	defer sdl.Quit()
 
 	logger.Info("Creating windows")
 	window, err := sdl.CreateWindow(
-		views.ScreenTitle, sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, views.ScreenWidth, views.ScreenHeight, sdl.WINDOW_SHOWN)
+		views.ScreenTitle,
+		sdl.WINDOWPOS_UNDEFINED,
+		sdl.WINDOWPOS_UNDEFINED,
+		views.ScreenWidth,
+		views.ScreenHeight,
+		sdl.WINDOW_SHOWN|sdl.WINDOW_OPENGL|sdl.WINDOW_BORDERLESS)
 	if err != nil {
 		logger.WithError(err).Fatal("failed to create window")
-		return 1
 	}
 	defer window.Destroy()
 
 	logger.Info("Creating screen renderer")
-	screenRenderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
+	renderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
 	if err != nil {
 		logger.WithError(err).Fatal("failed to create renderer")
-		return 1
 	}
-	defer screenRenderer.Destroy()
-	screenRenderer.SetDrawBlendMode(sdl.BLENDMODE_NONE)
+	defer renderer.Destroy()
+
+	if err := renderer.SetDrawBlendMode(sdl.BLENDMODE_NONE); err != nil {
+		logger.WithError(err).Fatal("failed to set blend mode")
+	}
 
 	logger.Info("Initializing view resources")
-	spriteSet, err := views.NewSpriteSet(screenRenderer, cfg)
+	spriteSet, err := views.NewSpriteSet(renderer, cfg)
 	if err != nil {
 		logger.WithError(err).Fatal("could not load sprites from config")
-		return 1
 	}
 
-	infoPane, err := views.NewInfoElement(screenRenderer, cfg)
+	infoPane, err := views.NewInfoElement(renderer, cfg)
 	if err != nil {
 		logger.WithError(err).Fatal("could not load the base info pane")
-		return 1
 	}
 
 	renderSet := []views.ViewElement{
@@ -113,18 +109,19 @@ func run() int {
 		infoPane,
 	}
 
-	viewSet, err := views.ViewSetFromConfig(screenRenderer, renderSet, cfg)
+	viewSet, err := views.ViewSetFromConfig(renderer, renderSet, cfg)
 	if err != nil {
 		logger.WithError(err).Fatal("Could not load views from config")
-		return 1
 	}
 	defer viewSet.Teardown()
+
+	logger.Info("Showing window")
+	window.Show()
 
 	logger.Info("Initializing the display")
 	currentView := viewSet.CurrentView()
 	if err = currentView.Display(); err != nil {
 		logger.WithError(err).Fatal("could not initialize the display with the first view")
-		return 1
 	}
 
 	returnCode := -1
@@ -132,20 +129,9 @@ func run() int {
 	var delayMillis uint32
 	delayMillis = 1000 / targetFPS
 
-	logger.Info("Adding signal handler")
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-
 	logger.Info("Starting the UI loop")
 	for returnCode == -1 {
 		ticks = sdl.GetTicks()
-
-		// See if we should quit on interrupt
-		if sig := <-signalChan; sig != nil {
-			logger.Info("Terminating on interrupt signal")
-			returnCode = 0
-			continue
-		}
 
 		// PollEvent has to be run in the video init's thread
 		event := sdl.PollEvent()

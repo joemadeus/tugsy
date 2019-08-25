@@ -104,7 +104,7 @@ func (vs *ViewSet) NextView() *View {
 func (vs *ViewSet) Teardown() error {
 	logger.Info("Tearing down views")
 	for _, view := range vs.Views {
-		logger.Info("Unloading view", view.ViewName)
+		logger.Infof("Unloading view %s", view.ViewName)
 		if err := view.BaseMap.Tex.Destroy(); err != nil {
 			logger.WithError(err).Errorf("while tearing down view %s", view.ViewName)
 			// TODO
