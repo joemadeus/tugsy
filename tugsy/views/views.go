@@ -17,16 +17,6 @@ const (
 	ScreenTitle  = "Tugsy"
 )
 
-type ViewElement interface {
-	Render(view *View) error
-}
-
-type EmptyViewElement struct{}
-
-func (e *EmptyViewElement) Render(view *View) error {
-	return nil
-}
-
 var NoViewConfigFound = errors.New("could not find view configs")
 
 type ViewConfig struct {
@@ -44,14 +34,13 @@ type ViewSet struct {
 	Views []*View
 }
 
-func ViewSetFromConfig(screenRenderer *sdl.Renderer, elements []ViewElement, config *config.Config) (*ViewSet, error) {
+func ViewSetFromConfig(screenRenderer *sdl.Renderer, elements ElementLibrary, config *config.Config) (*ViewSet, error) {
 	if config.IsSet("views") == false {
 		return nil, NoViewConfigFound
 	}
 
 	var viewConfigs []*ViewConfig
-	err := config.UnmarshalKey("views", &viewConfigs)
-	if err != nil {
+	if err := config.UnmarshalKey("views", &viewConfigs); err != nil {
 		return nil, err
 	}
 
@@ -119,10 +108,10 @@ type View struct {
 	ViewName       string
 	ScreenRenderer *sdl.Renderer
 
-	Elements []ViewElement
+	Elements ElementLibrary
 }
 
-// Clears the renderer and redisplays the screen using all the Renders in Renderset
+// Display clears the renderer and redisplays all the ViewElements in this View
 func (view *View) Display() error {
 	err := view.ScreenRenderer.Clear()
 	if err != nil {
@@ -137,8 +126,7 @@ func (view *View) Display() error {
 	}
 
 	for _, element := range view.Elements {
-		err := element.Render(view)
-		if err != nil {
+		if err := element.Render(view); err != nil {
 			logger.WithError(err).Error("could not render", "element", element)
 		}
 	}

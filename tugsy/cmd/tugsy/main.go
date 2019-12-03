@@ -33,15 +33,15 @@ func run() int {
 		return 1
 	}
 
-	positionData := shipdata.NewAISData()
+	aisData := shipdata.NewAISData()
 
 	logger.Info("Starting the position culling loop")
-	go positionData.PrunePositions()
+	go aisData.PrunePositions()
 
 	logger.Info("Loading the AIS routers")
 	decoded := make(chan aislib.Message)
 	failed := make(chan aislib.FailedSentence)
-	routers, err := shipdata.RemoteAISServersFromConfig(decoded, failed, cfg)
+	routers, err := shipdata.RemoteAISServersFromConfig(aisData, decoded, failed, cfg)
 	if err != nil {
 		logger.WithError(err).Fatal("Could not initialize the routers")
 	}
@@ -76,7 +76,7 @@ func run() int {
 		sdl.WINDOWPOS_UNDEFINED,
 		views.ScreenWidth,
 		views.ScreenHeight,
-		sdl.WINDOW_SHOWN|sdl.WINDOW_OPENGL|sdl.WINDOW_BORDERLESS)
+		sdl.WINDOW_SHOWN|sdl.WINDOW_OPENGL) // |sdl.WINDOW_BORDERLESS
 	if err != nil {
 		logger.WithError(err).Fatal("failed to create window")
 	}
@@ -105,7 +105,7 @@ func run() int {
 	}
 
 	renderSet := []views.ViewElement{
-		shipdata.NewShipPositionElement(positionData, spriteSet),
+		shipdata.NewShipPositionElement(aisData, spriteSet),
 		infoPane,
 	}
 
@@ -139,6 +139,11 @@ func run() int {
 		case *sdl.QuitEvent:
 			returnCode = 0
 			continue
+
+		case *sdl.MouseButtonEvent:
+			if t.Type == sdl.MOUSEBUTTONDOWN {
+			}
+
 		case *sdl.KeyboardEvent:
 			switch {
 			case t.Keysym.Sym == sdl.K_SPACE && t.Type == sdl.KEYDOWN:

@@ -1,6 +1,7 @@
 package shipdata
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -12,17 +13,26 @@ const (
 	defaultPositionCullingInterval = 5 * time.Second
 )
 
+type MMSIUnavailableError struct {
+	MMSI uint32
+}
+
+func (e MMSIUnavailableError) Error() string {
+	return fmt.Sprintf("mmsi %d is unavailable", e.MMSI)
+}
+
 type ShipHistory struct {
 	sync.Mutex
+
+	mmsi uint32
 
 	// append new positions to the end
 	positions  []Positionable
 	voyagedata *SourcedStaticVoyageData
-	dirty      bool
 }
 
-func NewShipHistory() *ShipHistory {
-	return &ShipHistory{positions: make([]Positionable, 0)}
+func NewShipHistory(mmsi uint32) *ShipHistory {
+	return &ShipHistory{mmsi: mmsi, positions: make([]Positionable, 0)}
 }
 
 func (h *ShipHistory) addPosition(report Positionable) {
@@ -30,7 +40,6 @@ func (h *ShipHistory) addPosition(report Positionable) {
 	defer h.Unlock()
 
 	h.positions = append(h.positions, report)
-	h.dirty = true
 }
 
 func (h *ShipHistory) setVoyageData(d *SourcedStaticVoyageData) {
@@ -40,17 +49,15 @@ func (h *ShipHistory) setVoyageData(d *SourcedStaticVoyageData) {
 	h.voyagedata = d
 }
 
-func (h *ShipHistory) prune(since time.Time) {
+func (h *ShipHistory) prune(since time.Time) int {
 	h.Lock()
 	defer h.Unlock()
 
 	// shortcut -- test the first element. if it's after 'since', just return the original
 	// slice and don't flag 'dirty'
 	if len(h.positions) == 0 || h.positions[0].GetReceivedTime().After(since) {
-		return
+		return len(h.positions)
 	}
-
-	h.dirty = true
 
 	var a int
 	var position Positionable
@@ -61,6 +68,7 @@ func (h *ShipHistory) prune(since time.Time) {
 	}
 
 	h.positions = h.positions[a:]
+	return len(h.positions)
 }
 
 type AISData struct {
@@ -70,8 +78,8 @@ type AISData struct {
 	mmsiBaseStations map[uint32]*SourcedBaseStationReport
 	mmsiBinaryData   map[uint32]*SourcedBinaryBroadcast
 
-	positionRetentionDur    time.Duration
-	positionCullingInterval time.Duration
+	PositionRetentionDur    time.Duration
+	PositionCullingInterval time.Duration
 }
 
 func NewAISData() *AISData {
@@ -80,8 +88,8 @@ func NewAISData() *AISData {
 		mmsiBaseStations: make(map[uint32]*SourcedBaseStationReport),
 		mmsiBinaryData:   make(map[uint32]*SourcedBinaryBroadcast),
 
-		positionRetentionDur:    defaultPositionRetentionDur,
-		positionCullingInterval: defaultPositionCullingInterval,
+		PositionRetentionDur:    defaultPositionRetentionDur,
+		PositionCullingInterval: defaultPositionCullingInterval,
 	}
 }
 
@@ -96,7 +104,7 @@ func (aisData *AISData) getOrCreateShipHistory(mmsi uint32) *ShipHistory {
 
 	history, ok := aisData.mmsiHistories[mmsi]
 	if ok == false {
-		history = NewShipHistory()
+		history = NewShipHistory(mmsi)
 		aisData.mmsiHistories[mmsi] = history
 	}
 
@@ -120,53 +128,39 @@ func (aisData *AISData) UpdateBinaryBroadcast(report *SourcedBinaryBroadcast) {
 	aisData.mmsiBinaryData[report.MMSI] = report
 }
 
-// Run as a go func. Periodically, and forever, prune positions from all the known ship
-// histories.
+// Forever periodically prunes positions from all the known ship histories.
 func (aisData *AISData) PrunePositions() {
-	cullChan := time.Tick(aisData.positionCullingInterval)
+	tick := time.Tick(aisData.PositionCullingInterval)
 
 	for {
 		select {
-		case <-cullChan:
+		case <-tick:
 			logger.Debug("culling positions")
 			// make a copy of the keyset so we don't have to maintain the lock on aisData.
 			// doing so means potentially examining only a subset of all the shipdata, but
 			// that's alright: this isn't toooo important a process & we'll get to the ones
 			// we miss next time
-			since := time.Now().Add(-aisData.positionRetentionDur)
-			for _, mmsi := range aisData.GetHistoryMMSIs() {
-				history, ok := aisData.mmsiHistories[mmsi]
-				if ok == false {
-					logger.Debugf("MMSI %d was removed before it could be pruned", mmsi)
-					continue
+			since := time.Now().Add(-aisData.PositionRetentionDur)
+			for _, sh := range aisData.GetHistoryMMSIs() {
+				if sh.prune(since) == 0 {
+					logger.Infof("a ship has not been heard from in a while. Removing MMSI %v", sh.mmsi)
+					delete(aisData.mmsiHistories, sh.mmsi)
 				}
-
-				history.Lock()
-				history.prune(since)
-
-				if len(history.positions) == 0 {
-					logger.Infof("a ship has not been heard from in a while. Removing MMSI %v", mmsi)
-					delete(aisData.mmsiHistories, mmsi)
-				}
-
-				history.Unlock()
 			}
 		}
 	}
 }
 
-// Returns a slice of all known ShipHistory MMSI values
-func (aisData *AISData) GetHistoryMMSIs() []uint32 {
+// Returns a copy of the slice of all known ShipHistorys
+func (aisData *AISData) GetHistoryMMSIs() []*ShipHistory {
 	aisData.Lock()
 	defer aisData.Unlock()
-	mmsis := make([]uint32, len(aisData.mmsiHistories))
-	i := 0
-	for mmsi := range aisData.mmsiHistories {
-		mmsis[i] = mmsi
-		i++
+	shs := make([]*ShipHistory, len(aisData.mmsiHistories), len(aisData.mmsiHistories))
+	for i, sh := range aisData.mmsiHistories {
+		shs[i] = sh
 	}
 
-	return mmsis
+	return shs
 }
 
 // Returns the ShipHistory/true associated with the given MMSI, or nil/false if it doesn't.

@@ -86,7 +86,7 @@ type RemoteAISServer struct {
 	running      bool
 }
 
-func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.FailedSentence, config *config.Config) ([]*RemoteAISServer, error) {
+func RemoteAISServersFromConfig(aisdata *AISData, decoded chan aislib.Message, failed chan aislib.FailedSentence, config *config.Config) ([]*RemoteAISServer, error) {
 	if config.IsSet("routers") == false {
 		return nil, NoRouterConfigFound
 	}
@@ -98,6 +98,7 @@ func RemoteAISServersFromConfig(decoded chan aislib.Message, failed chan aislib.
 	}
 
 	for _, router := range routers {
+		router.aisData = aisdata
 		router.Decoded = decoded
 		router.Failed = failed
 		router.inStrings = make(chan string)

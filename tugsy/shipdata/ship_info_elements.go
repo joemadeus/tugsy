@@ -1,38 +1,35 @@
 package shipdata
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/joemadeus/tugsy/tugsy/views"
 )
 
 type ShipInfoElement struct {
-	aisData AISData
-	MMSI    uint32
-
+	*views.InfoElement
 	FlagSheet *views.FlagSheet
-}
 
-func NewShipInfoElement(spriteSet *views.SpriteSet) (*ShipInfoElement, error) {
-	return &ShipInfoElement{
-		FlagSheet: spriteSet.FlagSheet,
-	}, nil
-}
-
-func (style *ShipInfoElement) SetMMSI(mmsi uint32) {
-	style.MMSI = mmsi
+	aisData AISData
+	mmsi    uint32
 }
 
 // ShipInfoElement renders information for the currently selected ship, including its
 // registration (including flag), name, current destination and current situation
-// (moored, underway, etc)
-func (style *ShipInfoElement) Render(view *views.View) error {
-	if _, ok := style.aisData.GetShipHistory(style.MMSI); ok == false {
-		return errors.New(fmt.Sprintf("vessel disappeared before displaying info pane: mmsi %d", style.MMSI))
+// (moored, underway, etc) into an InfoElement
+func (e *ShipInfoElement) Render(view *views.View) error {
+	e.Lock()
+	defer e.Unlock()
+
+	if _, ok := e.aisData.GetShipHistory(e.mmsi); ok == false {
+		return MMSIUnavailableError{MMSI: e.mmsi}
 	}
 
-	// TODO
+	// TODO info pane text/flag/etc rendering
 
 	return nil
+}
+
+func (e *ShipInfoElement) MMSI(mmsi uint32) {
+	e.Lock()
+	defer e.Unlock()
+	e.mmsi = mmsi
 }

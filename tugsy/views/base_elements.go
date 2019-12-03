@@ -21,6 +21,40 @@ const (
 	infoPaneW    = 240
 )
 
+type ViewElement interface {
+	// Render causes whatever graphics are appropriate for the element to be rendered
+	// to the screen
+	Render(view *View) error
+
+	// Within returns true if the given x & y are within the bounds of the ViewElement
+	Within(x, y int32, within float64) bool
+}
+
+type EmptyViewElement struct{}
+
+func (e *EmptyViewElement) Render(view *View) error {
+	return nil
+}
+
+func (e *EmptyViewElement) Within(x, y int32, fluff float64) bool {
+	return false
+}
+
+type ElementLibrary []ViewElement
+
+// ScreenLookup returns the first ViewElement whose bounds include the given X & Y,
+// padded with the given fluff value
+func (el ElementLibrary) ScreenLookup(x, y int32, fluff float64) ViewElement {
+	// TODO fancy stuff involving graphs. for now we'll just do things iteratively
+	for _, v := range el {
+		if v.Within(x, y, fluff) {
+			return v
+		}
+	}
+
+	return nil
+}
+
 // A InfoElement has a base graphic with static size and position onto/into which
 // other graphics are overlaid
 type InfoElement struct {
@@ -93,4 +127,8 @@ func (ie *InfoElement) ReplaceContent(newRender ViewElement) {
 	ie.Lock()
 	defer ie.Unlock()
 	ie.Content = newRender
+}
+
+func (ie *InfoElement) Within(x, y int32, within float64) bool {
+	return false // TODO
 }
