@@ -47,11 +47,11 @@ func NewConfig() (*Config, error) {
 }
 
 // Returns a path to the sprite sheets
-func (config *Config) GetSpritesheetPath(spritesFile string) string {
+func (config *Config) SpriteSheetPath(spritesFile string) string {
 	return config.resourcesDirectory + spritesDir + "/" + spritesFile
 }
 
 // Returns a path to the resources for a given view
-func (config *Config) GetViewPath(viewName string) string {
+func (config *Config) ViewPath(viewName string) string {
 	return config.resourcesDirectory + "/" + viewName + "/"
 }

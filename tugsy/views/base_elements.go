@@ -42,8 +42,8 @@ func (e *EmptyViewElement) Within(x, y int32, fluff float64) bool {
 
 type ElementLibrary []ViewElement
 
-// ScreenLookup returns the first ViewElement whose bounds include the given X & Y,
-// padded with the given fluff value
+// ScreenLookup returns the first ViewElement whose bounds are closest to the given X & Y,
+// or nil if no element is within the given fluff value
 func (el ElementLibrary) ScreenLookup(x, y int32, fluff float64) ViewElement {
 	// TODO fancy stuff involving graphs. for now we'll just do things iteratively
 	for _, v := range el {
@@ -70,12 +70,12 @@ type InfoElement struct {
 
 func NewInfoElement(screenRenderer *sdl.Renderer, config *config.Config) (*InfoElement, error) {
 	logger.Info("Loading 'Info' element")
-	backgroundTex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(infoBackgroundFile))
+	backgroundTex, err := image.LoadTexture(screenRenderer, config.SpriteSheetPath(infoBackgroundFile))
 	if err != nil {
 		return nil, err
 	}
 
-	borderTex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(infoBorderFile))
+	borderTex, err := image.LoadTexture(screenRenderer, config.SpriteSheetPath(infoBorderFile))
 	if err != nil {
 		return nil, err
 	}

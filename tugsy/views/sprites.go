@@ -80,7 +80,7 @@ type DotSheet struct {
 
 func NewDotSheet(screenRenderer *sdl.Renderer, config *config.Config) (*DotSheet, error) {
 	logger.Info("Loading sprites 'Dots'")
-	tex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(dotsSpritesFile))
+	tex, err := image.LoadTexture(screenRenderer, config.SpriteSheetPath(dotsSpritesFile))
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ type SpecialSheet struct {
 
 func NewSpecialSheet(screenRenderer *sdl.Renderer, config *config.Config) (*SpecialSheet, error) {
 	logger.Info("Loading sprites 'Special'")
-	tex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(specialSpritesFile))
+	tex, err := image.LoadTexture(screenRenderer, config.SpriteSheetPath(specialSpritesFile))
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +186,7 @@ type FlagSheet struct {
 func NewFlagSheet(screenRenderer *sdl.Renderer, config *config.Config) (*FlagSheet, error) {
 	logger.Info("Loading sprites 'Flags'")
 
-	tex, err := image.LoadTexture(screenRenderer, config.GetSpritesheetPath(flagsSpritesFile))
+	tex, err := image.LoadTexture(screenRenderer, config.SpriteSheetPath(flagsSpritesFile))
 	if err != nil {
 		return nil, err
 	}

@@ -51,7 +51,7 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, elements ElementLibrary, co
 
 	for _, viewConfig := range viewConfigs {
 		logger.Infof("Loading view %s", viewConfig.MapName)
-		baseTexture, err := image.LoadTexture(screenRenderer, config.GetViewPath(viewConfig.MapName)+baseMapFile)
+		baseTexture, err := image.LoadTexture(screenRenderer, config.ViewPath(viewConfig.MapName)+baseMapFile)
 		if err != nil {
 			return nil, err
 		}
