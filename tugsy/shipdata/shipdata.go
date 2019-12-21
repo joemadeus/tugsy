@@ -24,7 +24,7 @@ func (e MMSIUnavailableError) Error() string {
 type ShipHistory struct {
 	sync.Mutex
 
-	mmsi uint32
+	MMSI uint32
 
 	// append new positions to the end
 	positions  []Positionable
@@ -32,7 +32,23 @@ type ShipHistory struct {
 }
 
 func NewShipHistory(mmsi uint32) *ShipHistory {
-	return &ShipHistory{mmsi: mmsi, positions: make([]Positionable, 0)}
+	return &ShipHistory{MMSI: mmsi, positions: make([]Positionable, 0)}
+}
+
+// Positions returns a copy of the slice of Positionables currently associated with
+// this ShipHistory
+func (h *ShipHistory) Positions() []Positionable {
+	h.Lock()
+	defer h.Unlock()
+	ret := make([]Positionable, len(h.positions), len(h.positions))
+	copy(ret, h.positions)
+	return ret
+}
+
+func (h *ShipHistory) VoyageData() *SourcedStaticVoyageData {
+	h.Lock()
+	defer h.Unlock()
+	return h.voyagedata
 }
 
 func (h *ShipHistory) addPosition(report Positionable) {
@@ -141,10 +157,10 @@ func (aisData *AISData) PrunePositions() {
 			// that's alright: this isn't toooo important a process & we'll get to the ones
 			// we miss next time
 			since := time.Now().Add(-aisData.PositionRetentionDur)
-			for _, sh := range aisData.GetHistoryMMSIs() {
+			for _, sh := range aisData.Historys() {
 				if sh.prune(since) == 0 {
-					logger.Infof("a ship has not been heard from in a while. Removing MMSI %v", sh.mmsi)
-					delete(aisData.mmsiHistories, sh.mmsi)
+					logger.Infof("a ship has not been heard from in a while. Removing MMSI %v", sh.MMSI)
+					delete(aisData.mmsiHistories, sh.MMSI)
 				}
 			}
 		}
@@ -152,7 +168,7 @@ func (aisData *AISData) PrunePositions() {
 }
 
 // Returns a copy of the slice of all known ShipHistorys
-func (aisData *AISData) GetHistoryMMSIs() []*ShipHistory {
+func (aisData *AISData) Historys() []*ShipHistory {
 	aisData.Lock()
 	defer aisData.Unlock()
 	shs := make([]*ShipHistory, len(aisData.mmsiHistories), len(aisData.mmsiHistories))
@@ -165,7 +181,7 @@ func (aisData *AISData) GetHistoryMMSIs() []*ShipHistory {
 
 // Returns the ShipHistory/true associated with the given MMSI, or nil/false if it doesn't.
 // Calling code should lock using the history's mutex if modifying or querying data.
-func (aisData *AISData) GetShipHistory(mmsi uint32) (*ShipHistory, bool) {
+func (aisData *AISData) ShipHistory(mmsi uint32) (*ShipHistory, bool) {
 	aisData.Lock()
 	defer aisData.Unlock()
 	history, ok := aisData.mmsiHistories[mmsi]

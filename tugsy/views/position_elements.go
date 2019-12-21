@@ -1,10 +1,10 @@
-package shipdata
+package views
 
 import (
 	"math"
 	"sync"
 
-	"github.com/joemadeus/tugsy/tugsy/views"
+	"github.com/joemadeus/tugsy/tugsy/shipdata"
 	"github.com/sirupsen/logrus"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -14,19 +14,19 @@ const (
 )
 
 type screenPosition struct {
-	views.BaseMapPosition
+	BaseMapPosition
 	mmsi uint32
 }
 
 type ShipPositionElement struct {
 	sync.Mutex
-	aisData        *AISData
+	aisData        *shipdata.AISData
 	curPositions   []screenPosition
-	specialSprites *views.SpecialSheet
-	dotSprites     *views.DotSheet
+	specialSprites *SpecialSheet
+	dotSprites     *DotSheet
 }
 
-func NewShipPositionElement(ais *AISData, spriteSet *views.SpriteSet) *ShipPositionElement {
+func NewShipPositionElement(ais *shipdata.AISData, spriteSet *SpriteSet) *ShipPositionElement {
 	logrus.Info("Loading 'Ship Position' element")
 	return &ShipPositionElement{aisData: ais, specialSprites: spriteSet.SpecialSheet, dotSprites: spriteSet.DotSheet}
 }
@@ -50,7 +50,7 @@ func (e *ShipPositionElement) Within(x, y int32, fluff float64) bool {
 			continue
 		}
 
-		if _, there := e.aisData.GetShipHistory(sp.mmsi); there == false {
+		if _, there := e.aisData.ShipHistory(sp.mmsi); there == false {
 			continue
 		}
 	}
@@ -59,23 +59,26 @@ func (e *ShipPositionElement) Within(x, y int32, fluff float64) bool {
 }
 
 // Render renders ship tracks and positions
-func (e *ShipPositionElement) Render(view *views.View) error {
+func (e *ShipPositionElement) Render(view *View) error {
 	rendered := make([]screenPosition, 0)
-	for _, sh := range e.aisData.GetHistoryMMSIs() {
-		if len(sh.positions) == 0 {
-			logrus.Debug("no positions", "mmsi", sh.mmsi)
+	for _, sh := range e.aisData.Historys() {
+		positions := sh.Positions()
+		hue := shipTypeToHue(sh)
+		if len(positions) == 0 {
+			logrus.Debug("no positions", "mmsi", sh.MMSI)
 			continue
 		}
 
-		if err := e.renderHistory(view, sh); err != nil {
+		if err := e.renderHistory(view, hue, positions); err != nil {
 			return err
 		}
 
-		p, err := e.renderPosition(view, sh)
+		p, err := e.renderPosition(view, hue, positions)
 		if err != nil {
 			return err
 		}
-		rendered = append(rendered, p)
+
+		rendered = append(rendered, screenPosition{p, sh.MMSI})
 	}
 
 	e.Lock()
@@ -85,23 +88,22 @@ func (e *ShipPositionElement) Render(view *views.View) error {
 	return nil
 }
 
-func (e *ShipPositionElement) renderPosition(view *views.View, history *ShipHistory) (screenPosition, error) {
-	currentPosition := history.positions[len(history.positions)-1]
+func (e *ShipPositionElement) renderPosition(view *View, hue Hue, positions []shipdata.Positionable) (BaseMapPosition, error) {
+	currentPosition := positions[0]
 	baseMapPosition := view.GetBaseMapPosition(currentPosition.GetPositionReport())
 
-	hue := shipTypeToHue(history)
-	var sprite *views.Sprite
+	var sprite *Sprite
 	var err error
-	if hue == views.UnknownHue {
+	if hue == UnknownHue {
 		// return the special "unknown" dot
 		if sprite, err = e.specialSprites.GetSprite("unknown"); err != nil {
 			logrus.WithError(err).Error("could not load special sprite 'unknown'")
-			return screenPosition{}, err
+			return BaseMapPosition{}, err
 		}
 	} else {
 		if sprite, err = e.dotSprites.GetSprite(hue, "normal"); err != nil {
 			logrus.WithError(err).Errorf("could not load sprite with hue %v", hue)
-			return screenPosition{}, err
+			return BaseMapPosition{}, err
 		}
 	}
 
@@ -111,21 +113,21 @@ func (e *ShipPositionElement) renderPosition(view *views.View, history *ShipHist
 
 	if err := view.ScreenRenderer.Copy(sprite.Texture, sprite.Rect, toDestRect(&baseMapPosition, defaultDestSpriteSizePixels)); err != nil {
 		logrus.WithError(err).Error("rendering ship history")
-		return screenPosition{}, err
+		return BaseMapPosition{}, err
 	}
 
-	return screenPosition{BaseMapPosition: baseMapPosition, mmsi: history.mmsi}, nil
+	return baseMapPosition, nil
 }
 
-func (e *ShipPositionElement) renderHistory(view *views.View, history *ShipHistory) error {
+func (e *ShipPositionElement) renderHistory(view *View, hue Hue, positions []shipdata.Positionable) error {
 	trackPointsSize := int32(4)
 	trackAlpha := uint8(128)
 
-	r, g, b := views.HueToRGB(shipTypeToHue(history))
-	sdlPoints := make([]sdl.Point, len(history.positions), len(history.positions))
-	sdlRects := make([]sdl.Rect, len(history.positions), len(history.positions))
+	r, g, b := HueToRGB(hue)
+	sdlPoints := make([]sdl.Point, len(positions), len(positions))
+	sdlRects := make([]sdl.Rect, len(positions), len(positions))
 
-	for i, position := range history.positions {
+	for i, position := range positions {
 		baseMapPosition := view.GetBaseMapPosition(position.GetPositionReport())
 		sdlPoints[i] = sdl.Point{
 			X: int32(baseMapPosition.X + 0.5),
@@ -157,7 +159,7 @@ func (e *ShipPositionElement) renderHistory(view *views.View, history *ShipHisto
 	return nil
 }
 
-func toDestRect(position *views.BaseMapPosition, pixSquare int32) *sdl.Rect {
+func toDestRect(position *BaseMapPosition, pixSquare int32) *sdl.Rect {
 	return &sdl.Rect{
 		X: int32(position.X+0.5) - (pixSquare / 2),
 		Y: int32(position.Y+0.5) - (pixSquare / 2),
@@ -168,65 +170,66 @@ func toDestRect(position *views.BaseMapPosition, pixSquare int32) *sdl.Rect {
 
 // Maps a ship type to a hue, or to UnknownHue if the type is unknown or should be
 // mapped that way anyway
-func shipTypeToHue(history *ShipHistory) views.Hue {
+func shipTypeToHue(history *shipdata.ShipHistory) Hue {
+	voyagedata := history.VoyageData()
 	switch {
-	case history.voyagedata == nil:
-		return views.UnknownHue
-	case history.voyagedata.ShipType <= 29:
-		return views.UnknownHue
-	case history.voyagedata.ShipType == 30:
+	case voyagedata == nil:
+		return UnknownHue
+	case voyagedata.ShipType <= 29:
+		return UnknownHue
+	case voyagedata.ShipType == 30:
 		// fishing
-	case history.voyagedata.ShipType <= 32:
+	case voyagedata.ShipType <= 32:
 		// towing -- VIOLET: H310
 		return 310
-	case history.voyagedata.ShipType <= 34:
+	case voyagedata.ShipType <= 34:
 		// diving/dredging/underwater
-	case history.voyagedata.ShipType == 35:
+	case voyagedata.ShipType == 35:
 		// military ops
-	case history.voyagedata.ShipType == 36:
+	case voyagedata.ShipType == 36:
 		// sailing
-	case history.voyagedata.ShipType == 37:
+	case voyagedata.ShipType == 37:
 		// pleasure craft -- VIOLET: H290
 		return 290
-	case history.voyagedata.ShipType <= 39:
-		return views.UnknownHue
-	case history.voyagedata.ShipType <= 49:
+	case voyagedata.ShipType <= 39:
+		return UnknownHue
+	case voyagedata.ShipType <= 49:
 		// high speed craft -- YELLOW/ORANGE: H50
 		return 50
-	case history.voyagedata.ShipType == 50:
+	case voyagedata.ShipType == 50:
 		// pilot vessel -- ORANGE: H30
 		return 30
-	case history.voyagedata.ShipType == 51:
+	case voyagedata.ShipType == 51:
 		// search & rescue
-	case history.voyagedata.ShipType == 52:
+	case voyagedata.ShipType == 52:
 		// tug -- RED: H10
 		return 10
-	case history.voyagedata.ShipType == 53:
+	case voyagedata.ShipType == 53:
 		// port tender -- ORANGE: H50
 		return 50
-	case history.voyagedata.ShipType == 54:
-		return views.UnknownHue // "anti pollution equipment"
-	case history.voyagedata.ShipType == 55:
+	case voyagedata.ShipType == 54:
+		return UnknownHue // "anti pollution equipment"
+	case voyagedata.ShipType == 55:
 		// law enforcement
-	case history.voyagedata.ShipType <= 57:
-		return views.UnknownHue
-	case history.voyagedata.ShipType == 58:
+	case voyagedata.ShipType <= 57:
+		return UnknownHue
+	case voyagedata.ShipType == 58:
 		// medical transport
-	case history.voyagedata.ShipType == 59:
+	case voyagedata.ShipType == 59:
 		// "noncombatant ship"
-	case history.voyagedata.ShipType <= 69:
+	case voyagedata.ShipType <= 69:
 		// passenger -- GREEN: H110
 		return 110
-	case history.voyagedata.ShipType <= 79:
+	case voyagedata.ShipType <= 79:
 		// cargo -- LIGHT BLUE: H190
 		return 190
-	case history.voyagedata.ShipType <= 89:
+	case voyagedata.ShipType <= 89:
 		// tanker -- DARK BLUE: H250
 		return 250
-	case history.voyagedata.ShipType <= 99:
-		return views.UnknownHue // other
+	case voyagedata.ShipType <= 99:
+		return UnknownHue // other
 	}
 
-	logrus.WithField("type num", history.voyagedata.ShipType).Warn("mapping an unhandled ship type")
+	logrus.WithField("type num", voyagedata.ShipType).Warn("mapping an unhandled ship type")
 	return 0
 }

@@ -1,12 +1,10 @@
-package weatherdata
-
-import "github.com/joemadeus/tugsy/tugsy/views"
+package views
 
 type TideBarElement struct{}
 
 // A TideBarElement renders the current position of the tide, whether it's advancing or
 // retreating and its high and low water marks
-func (style *TideBarElement) Render(view *views.View) error {
+func (style *TideBarElement) Render(view *View) error {
 	return nil
 }
 
@@ -14,6 +12,6 @@ func (style *TideBarElement) Render(view *views.View) error {
 // weather and lightning warning indicators
 type WxButtonElement struct{}
 
-func (style *WxButtonElement) Render(view *views.View) error {
+func (style *WxButtonElement) Render(view *View) error {
 	return nil
 }

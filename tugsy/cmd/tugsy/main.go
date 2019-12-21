@@ -105,7 +105,7 @@ func run() int {
 	}
 
 	renderSet := []views.ViewElement{
-		shipdata.NewShipPositionElement(aisData, spriteSet),
+		views.NewShipPositionElement(aisData, spriteSet),
 		infoPane,
 	}
 

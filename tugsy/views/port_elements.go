@@ -1,4 +1,4 @@
-package portdata
+package views
 
 import "github.com/joemadeus/tugsy/tugsy/views"
 
