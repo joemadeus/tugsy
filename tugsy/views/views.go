@@ -34,7 +34,7 @@ type ViewSet struct {
 	Views []*View
 }
 
-func ViewSetFromConfig(screenRenderer *sdl.Renderer, elements ElementLibrary, config *config.Config) (*ViewSet, error) {
+func ViewSetFromConfig(config *config.Config, screenRenderer *sdl.Renderer, re *RootElement) (*ViewSet, error) {
 	if config.IsSet("views") == false {
 		return nil, NoViewConfigFound
 	}
@@ -45,7 +45,6 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, elements ElementLibrary, co
 	}
 
 	viewSet := &ViewSet{
-		index: 0,
 		Views: make([]*View, 0),
 	}
 
@@ -60,15 +59,15 @@ func ViewSetFromConfig(screenRenderer *sdl.Renderer, elements ElementLibrary, co
 			Tex:    baseTexture,
 			SWGeo:  RealWorldPosition{viewConfig.West, viewConfig.South},
 			NEGeo:  RealWorldPosition{viewConfig.East, viewConfig.North},
+			Name:   viewConfig.MapName,
 			width:  float64(ScreenWidth),
 			height: float64(ScreenHeight),
 		}
 
 		view := &View{
 			BaseMap:        baseMap,
-			ViewName:       viewConfig.MapName,
 			ScreenRenderer: screenRenderer,
-			Elements:       elements,
+			RootElement:    re,
 		}
 
 		viewSet.Views = append(viewSet.Views, view)
@@ -85,7 +84,7 @@ func (vs *ViewSet) NextView() *View {
 	if vs.index == len(vs.Views)-1 {
 		vs.index = 0
 	} else {
-		vs.index += 1
+		vs.index++
 	}
 	return vs.Views[vs.index]
 }
@@ -93,9 +92,9 @@ func (vs *ViewSet) NextView() *View {
 func (vs *ViewSet) Teardown() error {
 	logger.Info("Tearing down views")
 	for _, view := range vs.Views {
-		logger.Infof("Unloading view %s", view.ViewName)
+		logger.Infof("Unloading view %s", view.Name)
 		if err := view.BaseMap.Tex.Destroy(); err != nil {
-			logger.WithError(err).Errorf("while tearing down view %s", view.ViewName)
+			logger.WithError(err).Errorf("while tearing down view %s", view.Name)
 			// TODO
 		}
 	}
@@ -105,43 +104,39 @@ func (vs *ViewSet) Teardown() error {
 
 type View struct {
 	*BaseMap
-	ViewName       string
 	ScreenRenderer *sdl.Renderer
-
-	Elements ElementLibrary
+	RootElement    *RootElement
 }
 
 // Display clears the renderer and redisplays all the ViewElements in this View
-func (view *View) Display() error {
-	err := view.ScreenRenderer.Clear()
+func (v *View) Display() error {
+	err := v.ScreenRenderer.Clear()
 	if err != nil {
 		logger.WithError(err).Error("Could not clear the screen renderer")
 		return err
 	}
 
-	err = view.ScreenRenderer.Copy(view.BaseMap.Tex, nil, nil)
+	err = v.ScreenRenderer.Copy(v.BaseMap.Tex, nil, nil)
 	if err != nil {
 		logger.WithError(err).Error("could not copy the base map to the screen renderer")
 		return err
 	}
 
-	for _, element := range view.Elements {
-		if err := element.Render(view); err != nil {
-			logger.WithError(err).Error("could not render", "element", element)
-		}
+	if err := v.RootElement.Render(v); err != nil {
+		logger.WithError(err).Errorf("could not render")
 	}
 
-	view.ScreenRenderer.Present()
+	v.ScreenRenderer.Present()
 
 	return nil
 }
 
 // GetBaseMapPosition estimates the given position report on the view's base map
 // using a simple linear approximation
-func (view *View) GetBaseMapPosition(position *aislib.PositionReport) BaseMapPosition {
+func (v *View) BaseMapPosition(position *aislib.PositionReport) BaseMapPosition {
 	return BaseMapPosition{
-		(position.Lon - view.SWGeo.X) / (view.NEGeo.X - view.SWGeo.X) * view.width,
-		view.height - (position.Lat-view.SWGeo.Y)/(view.NEGeo.Y-view.SWGeo.Y)*view.height,
+		(position.Lon - v.SWGeo.X) / (v.NEGeo.X - v.SWGeo.X) * v.width,
+		v.height - (position.Lat-v.SWGeo.Y)/(v.NEGeo.Y-v.SWGeo.Y)*v.height,
 	}
 }
 
@@ -160,5 +155,6 @@ type BaseMap struct {
 	Tex           *sdl.Texture
 	NEGeo         RealWorldPosition
 	SWGeo         RealWorldPosition
+	Name          string
 	width, height float64
 }

@@ -22,8 +22,8 @@ var (
 
 type Positionable interface {
 	GetPositionReport() *aislib.PositionReport
-	GetSource() string
-	GetReceivedTime() time.Time
+	Source() string
+	ReceivedTime() time.Time
 }
 
 type SourceAndTime struct {
@@ -31,11 +31,11 @@ type SourceAndTime struct {
 	receivedTime time.Time
 }
 
-func (st *SourceAndTime) GetSource() string {
+func (st *SourceAndTime) Source() string {
 	return st.sourceName
 }
 
-func (st *SourceAndTime) GetReceivedTime() time.Time {
+func (st *SourceAndTime) ReceivedTime() time.Time {
 	return st.receivedTime
 }
 

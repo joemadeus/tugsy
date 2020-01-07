@@ -13,95 +13,171 @@ const (
 	defaultDestSpriteSizePixels = 20
 )
 
-type screenPosition struct {
-	BaseMapPosition
-	mmsi uint32
+// ShipInfoElement renders information for a ship, including its registration, flag,
+// name, current destination and current situation (moored, underway, etc) into a
+// BaseInfoElement
+type ShipInfoElement struct {
+	flag        ChildElement
+	port        ChildElement
+	infoElement *BaseInfoElement
+	history     *shipdata.ShipHistory
 }
 
-type ShipPositionElement struct {
+func (e *ShipInfoElement) ClosestChild(x, y int32) (ChildElement, float64) {
+	fD := e.flag.Distance(x, y)
+	pD := e.port.Distance(x, y)
+	if fD < pD {
+		return e.flag, fD
+	}
+
+	return e.port, pD
+}
+
+func (e *ShipInfoElement) Render(v *View) error {
+	panic("implement me")
+}
+
+func (e *ShipInfoElement) Update(h *shipdata.ShipHistory) error {
+	return e.infoElement.UpdateContent(e)
+}
+
+type AllPositionElements struct {
 	sync.Mutex
-	aisData        *shipdata.AISData
-	curPositions   []screenPosition
-	specialSprites *SpecialSheet
-	dotSprites     *DotSheet
+	*SpriteSet
+
+	aisData          *shipdata.AISData
+	positionElements map[uint32]*ShipPositionElement
 }
 
-func NewShipPositionElement(ais *shipdata.AISData, spriteSet *SpriteSet) *ShipPositionElement {
-	logrus.Info("Loading 'Ship Position' element")
-	return &ShipPositionElement{aisData: ais, specialSprites: spriteSet.SpecialSheet, dotSprites: spriteSet.DotSheet}
+func NewAllPositionElements(sprites *SpriteSet, ais *shipdata.AISData) *AllPositionElements {
+	return &AllPositionElements{
+		SpriteSet:        sprites,
+		aisData:          ais,
+		positionElements: make(map[uint32]*ShipPositionElement),
+	}
 }
 
-// ScreenLookup finds the MMSI for the ship closest to the provided X and Y screen
-// coordinates. Returns zero if there are no ships within the 'within' distance
-func (e *ShipPositionElement) Within(x, y int32, fluff float64) bool {
-	// for now we're just doing this linearly. we handle these sort of lookups only
-	// infrequently and the cardinality isn't usually high
+func (e *AllPositionElements) ClosestChild(x, y int32) (ChildElement, float64) {
+	e.Lock()
+	defer e.Unlock()
+
 	closest := struct {
-		mmsi uint32
-		d    float64
+		ele *ShipPositionElement
+		d   float64
 	}{d: math.MaxFloat64}
-	for _, sp := range e.curPositions {
-		distance := math.Sqrt(math.Pow(float64(x)-sp.X, 2) + math.Pow(float64(y)-sp.Y, 2))
-		if distance > fluff {
+	for _, sp := range e.positionElements {
+		d := sp.Distance(x, y)
+		if d > closest.d {
 			continue
 		}
 
-		if distance > closest.d {
-			continue
-		}
-
-		if _, there := e.aisData.ShipHistory(sp.mmsi); there == false {
-			continue
-		}
+		closest.d = d
+		closest.ele = sp
 	}
 
-	return closest.mmsi
+	return closest.ele, closest.d
 }
 
-// Render renders ship tracks and positions
-func (e *ShipPositionElement) Render(view *View) error {
-	rendered := make([]screenPosition, 0)
-	for _, sh := range e.aisData.Historys() {
-		positions := sh.Positions()
-		hue := shipTypeToHue(sh)
-		if len(positions) == 0 {
-			logrus.Debug("no positions", "mmsi", sh.MMSI)
-			continue
-		}
-
-		if err := e.renderHistory(view, hue, positions); err != nil {
-			return err
-		}
-
-		p, err := e.renderPosition(view, hue, positions)
-		if err != nil {
-			return err
-		}
-
-		rendered = append(rendered, screenPosition{p, sh.MMSI})
-	}
+func (e *AllPositionElements) Render(v *View) error {
+	mmsis := make(map[uint32]struct{})
+	histories := e.aisData.ShipHistories() // returns a copy
 
 	e.Lock()
 	defer e.Unlock()
-	e.curPositions = rendered
+
+	for _, sh := range histories {
+		se, ok := e.positionElements[sh.MMSI]
+		if ok == false {
+			se = &ShipPositionElement{SpriteSet: e.SpriteSet, history: sh}
+			e.positionElements[sh.MMSI] = se
+		}
+
+		if err := se.Render(v); err != nil {
+			return err
+		}
+
+		mmsis[sh.MMSI] = struct{}{}
+	}
+
+	// prune ShipPositionElements that no longer exist. could be replaced, along
+	// with add(), with a chan, I suppose
+	for m := range e.positionElements {
+		if _, ok := mmsis[m]; ok == false {
+			delete(e.positionElements, m)
+		}
+	}
 
 	return nil
 }
 
+func (e *AllPositionElements) SetHistory(h *shipdata.ShipHistory) {
+	e.Lock()
+	defer e.Unlock()
+	e.positionElements[h.MMSI] = &ShipPositionElement{
+		history:   h,
+		SpriteSet: e.SpriteSet,
+	}
+}
+
+func (e *AllPositionElements) RemoveHistory(h *shipdata.ShipHistory) {
+	e.Lock()
+	defer e.Unlock()
+	delete(e.positionElements, h.MMSI)
+}
+
+type ShipPositionElement struct {
+	*SpriteSet
+
+	history     *shipdata.ShipHistory
+	curPosition BaseMapPosition
+	infoElement *ShipInfoElement
+}
+
+func (e *ShipPositionElement) Distance(x, y int32) float64 {
+	// this is a leaf -- there are no children
+	return screenDistance(x, y, e.curPosition.X, e.curPosition.Y)
+}
+
+func (e *ShipPositionElement) HandleTouch() error {
+	e.infoElement.history = e.history
+	return nil
+}
+
+func (e *ShipPositionElement) Render(v *View) error {
+	positions := e.history.Positions()
+	hue := shipTypeToHue(e.history)
+	if len(positions) == 0 {
+		logrus.Debug("no positions", "mmsi", e.history.MMSI)
+		return nil
+	}
+
+	if err := e.renderHistory(v, hue, positions); err != nil {
+		return err
+	}
+
+	p, err := e.renderPosition(v, hue, positions)
+	if err != nil {
+		return err
+	}
+
+	e.curPosition = p
+	return nil
+}
+
 func (e *ShipPositionElement) renderPosition(view *View, hue Hue, positions []shipdata.Positionable) (BaseMapPosition, error) {
-	currentPosition := positions[0]
-	baseMapPosition := view.GetBaseMapPosition(currentPosition.GetPositionReport())
+	currentPosition := positions[len(positions)-1]
+	baseMapPosition := view.BaseMapPosition(currentPosition.GetPositionReport())
 
 	var sprite *Sprite
 	var err error
 	if hue == UnknownHue {
 		// return the special "unknown" dot
-		if sprite, err = e.specialSprites.GetSprite("unknown"); err != nil {
+		if sprite, err = e.SpecialSheet.GetSprite("unknown"); err != nil {
 			logrus.WithError(err).Error("could not load special sprite 'unknown'")
 			return BaseMapPosition{}, err
 		}
 	} else {
-		if sprite, err = e.dotSprites.GetSprite(hue, "normal"); err != nil {
+		if sprite, err = e.DotSheet.GetSprite(hue, "normal"); err != nil {
 			logrus.WithError(err).Errorf("could not load sprite with hue %v", hue)
 			return BaseMapPosition{}, err
 		}
@@ -128,7 +204,7 @@ func (e *ShipPositionElement) renderHistory(view *View, hue Hue, positions []shi
 	sdlRects := make([]sdl.Rect, len(positions), len(positions))
 
 	for i, position := range positions {
-		baseMapPosition := view.GetBaseMapPosition(position.GetPositionReport())
+		baseMapPosition := view.BaseMapPosition(position.GetPositionReport())
 		sdlPoints[i] = sdl.Point{
 			X: int32(baseMapPosition.X + 0.5),
 			Y: int32(baseMapPosition.Y + 0.5),

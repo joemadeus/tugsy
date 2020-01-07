@@ -93,23 +93,13 @@ func run() int {
 		logger.WithError(err).Fatal("failed to set blend mode")
 	}
 
-	logger.Info("Initializing view resources")
+	logger.Info("Initializing view resources & elements")
 	spriteSet, err := views.NewSpriteSet(renderer, cfg)
 	if err != nil {
 		logger.WithError(err).Fatal("could not load sprites from config")
 	}
 
-	infoPane, err := views.NewInfoElement(renderer, cfg)
-	if err != nil {
-		logger.WithError(err).Fatal("could not load the base info pane")
-	}
-
-	renderSet := []views.ViewElement{
-		views.NewShipPositionElement(aisData, spriteSet),
-		infoPane,
-	}
-
-	viewSet, err := views.ViewSetFromConfig(renderer, renderSet, cfg)
+	viewSet, err := views.ViewSetFromConfig(cfg, renderer)
 	if err != nil {
 		logger.WithError(err).Fatal("Could not load views from config")
 	}
@@ -153,7 +143,7 @@ func run() int {
 
 		// Redisplay
 		if err = currentView.Display(); err != nil {
-			logger.WithError(err).Fatalf("Could not refresh the display, view %s", currentView.ViewName)
+			logger.WithError(err).Fatalf("Could not refresh the display, view %s", currentView.Name)
 			returnCode = 128
 			break
 		}

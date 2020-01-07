@@ -24,11 +24,11 @@ func (m *MockPositionReport) GetPositionReport() *aislib.PositionReport {
 	return m.positionReport
 }
 
-func (m *MockPositionReport) GetSource() string {
+func (m *MockPositionReport) Source() string {
 	return "test"
 }
 
-func (m *MockPositionReport) GetReceivedTime() time.Time {
+func (m *MockPositionReport) ReceivedTime() time.Time {
 	return m.receivedTime
 }
 
@@ -44,7 +44,8 @@ func TestAddAndPrune(t *testing.T) {
 	assert.Equal(t, sh.positions[0], posOne)
 	assert.Equal(t, sh.positions[1], posTwo)
 
-	assert.Equal(t, 1, sh.prune(now))
+	sh.prune(now)
+	assert.Equal(t, 1, len(sh.positions))
 	assert.Equal(t, sh.positions[0], posTwo)
 }
 
@@ -55,12 +56,14 @@ func TestNothingToPrune(t *testing.T) {
 	posTwo := &MockPositionReport{receivedTime: now.Add(20 * time.Second)}
 	sh.addPosition(posOne)
 	sh.addPosition(posTwo)
-	assert.Equal(t, 2, sh.prune(time.Now()))
+	sh.prune(time.Now())
+	assert.Equal(t, 2, len(sh.positions))
 }
 
 func TestEmptyPrune(t *testing.T) {
 	sh := NewShipHistory(1)
-	assert.Equal(t, 0, sh.prune(time.Now()))
+	sh.prune(time.Now())
+	assert.Equal(t, 0, len(sh.positions))
 }
 
 func TestGetPositionReports(t *testing.T) {

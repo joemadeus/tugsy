@@ -71,14 +71,14 @@ func (h *ShipHistory) prune(since time.Time) int {
 
 	// shortcut -- test the first element. if it's after 'since', just return the original
 	// slice and don't flag 'dirty'
-	if len(h.positions) == 0 || h.positions[0].GetReceivedTime().After(since) {
+	if len(h.positions) == 0 || h.positions[0].ReceivedTime().After(since) {
 		return len(h.positions)
 	}
 
 	var a int
 	var position Positionable
 	for a, position = range h.positions {
-		if position.GetReceivedTime().After(since) {
+		if position.ReceivedTime().After(since) {
 			break
 		}
 	}
@@ -157,18 +157,23 @@ func (aisData *AISData) PrunePositions() {
 			// that's alright: this isn't toooo important a process & we'll get to the ones
 			// we miss next time
 			since := time.Now().Add(-aisData.PositionRetentionDur)
-			for _, sh := range aisData.Historys() {
+			for _, sh := range aisData.ShipHistories() {
 				if sh.prune(since) == 0 {
-					logger.Infof("a ship has not been heard from in a while. Removing MMSI %v", sh.MMSI)
-					delete(aisData.mmsiHistories, sh.MMSI)
+					aisData.Lock()
+					// retest for positions within lock
+					if len(sh.positions) == 0 {
+						logger.Infof("a ship has not been heard from in a while. Removing MMSI %v", sh.MMSI)
+						delete(aisData.mmsiHistories, sh.MMSI)
+					}
+					aisData.Unlock()
 				}
 			}
 		}
 	}
 }
 
-// Returns a copy of the slice of all known ShipHistorys
-func (aisData *AISData) Historys() []*ShipHistory {
+// Returns a copy of the slice of ShipHistories
+func (aisData *AISData) ShipHistories() []*ShipHistory {
 	aisData.Lock()
 	defer aisData.Unlock()
 	shs := make([]*ShipHistory, len(aisData.mmsiHistories), len(aisData.mmsiHistories))
