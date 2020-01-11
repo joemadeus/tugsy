@@ -21,7 +21,6 @@ special-sprites:
 		${SPRITES}/special/R2-H0.png \
 		${SPRITES}/special/R3-H0.png \
 		${SPRITES}/special/R4-H0.png \
-		${SPRITES}/special/close.png \
 		-tile 1x6 \
 		-geometry 32x32x0x0 \
 		-background transparent \

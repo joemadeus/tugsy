@@ -1,3 +1,4 @@
+loglevel: DEBUG
 routers:
   - sourceName: "local"
     hostColonPort: "127.0.0.1:10110"
@@ -7,3 +8,4 @@ views:
     south: 41.769867
     east: -71.363937
     west: -71.405147
+touchFluff: 10.0
