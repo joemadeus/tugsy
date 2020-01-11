@@ -2,10 +2,11 @@ package views
 
 import (
 	"math"
+	"reflect"
 	"sync"
 
 	"github.com/joemadeus/tugsy/tugsy/shipdata"
-	"github.com/sirupsen/logrus"
+	logger "github.com/sirupsen/logrus"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -17,28 +18,21 @@ const (
 // name, current destination and current situation (moored, underway, etc) into a
 // BaseInfoElement
 type ShipInfoElement struct {
-	flag        ChildElement
-	port        ChildElement
-	infoElement *BaseInfoElement
-	history     *shipdata.ShipHistory
+	flag    ChildElement
+	history *shipdata.ShipHistory
+}
+
+func NewShipInfoElement(h *shipdata.ShipHistory) *ShipInfoElement {
+	return &ShipInfoElement{history: h}
 }
 
 func (e *ShipInfoElement) ClosestChild(x, y int32) (ChildElement, float64) {
-	fD := e.flag.Distance(x, y)
-	pD := e.port.Distance(x, y)
-	if fD < pD {
-		return e.flag, fD
-	}
-
-	return e.port, pD
+	return e.flag, e.flag.Distance(x, y)
 }
 
 func (e *ShipInfoElement) Render(v *View) error {
-	panic("implement me")
-}
-
-func (e *ShipInfoElement) Update(h *shipdata.ShipHistory) error {
-	return e.infoElement.UpdateContent(e)
+	// TODO
+	return nil
 }
 
 type AllPositionElements struct {
@@ -47,13 +41,15 @@ type AllPositionElements struct {
 
 	aisData          *shipdata.AISData
 	positionElements map[uint32]*ShipPositionElement
+	baseInfoElement  *BaseInfoElement
 }
 
-func NewAllPositionElements(sprites *SpriteSet, ais *shipdata.AISData) *AllPositionElements {
+func NewAllPositionElements(sprites *SpriteSet, ais *shipdata.AISData, be *BaseInfoElement) *AllPositionElements {
 	return &AllPositionElements{
 		SpriteSet:        sprites,
 		aisData:          ais,
 		positionElements: make(map[uint32]*ShipPositionElement),
+		baseInfoElement:  be,
 	}
 }
 
@@ -75,6 +71,7 @@ func (e *AllPositionElements) ClosestChild(x, y int32) (ChildElement, float64) {
 		closest.ele = sp
 	}
 
+	logger.Debugf("AllPositionElements ClosestChild at %s, %f", reflect.TypeOf(closest.ele).String(), closest.d)
 	return closest.ele, closest.d
 }
 
@@ -88,7 +85,7 @@ func (e *AllPositionElements) Render(v *View) error {
 	for _, sh := range histories {
 		se, ok := e.positionElements[sh.MMSI]
 		if ok == false {
-			se = &ShipPositionElement{SpriteSet: e.SpriteSet, history: sh}
+			se = &ShipPositionElement{SpriteSet: e.SpriteSet, history: sh, baseInfoElement: e.baseInfoElement}
 			e.positionElements[sh.MMSI] = se
 		}
 
@@ -110,76 +107,62 @@ func (e *AllPositionElements) Render(v *View) error {
 	return nil
 }
 
-func (e *AllPositionElements) SetHistory(h *shipdata.ShipHistory) {
-	e.Lock()
-	defer e.Unlock()
-	e.positionElements[h.MMSI] = &ShipPositionElement{
-		history:   h,
-		SpriteSet: e.SpriteSet,
-	}
-}
-
-func (e *AllPositionElements) RemoveHistory(h *shipdata.ShipHistory) {
-	e.Lock()
-	defer e.Unlock()
-	delete(e.positionElements, h.MMSI)
-}
-
 type ShipPositionElement struct {
 	*SpriteSet
 
-	history     *shipdata.ShipHistory
-	curPosition BaseMapPosition
-	infoElement *ShipInfoElement
+	curPosition     BaseMapPosition
+	history         *shipdata.ShipHistory
+	baseInfoElement *BaseInfoElement
 }
 
 func (e *ShipPositionElement) Distance(x, y int32) float64 {
-	// this is a leaf -- there are no children
-	return screenDistance(x, y, e.curPosition.X, e.curPosition.Y)
+	d := screenDistance(x, y, e.curPosition.X, e.curPosition.Y)
+	logger.Debugf("ShipPositionElement distance is %f", d)
+	return d
 }
 
 func (e *ShipPositionElement) HandleTouch() error {
-	e.infoElement.history = e.history
-	return nil
+	logger.Debug("Handling touch in ShipPositionElement")
+	infoElement := NewShipInfoElement(e.history)
+	return e.baseInfoElement.UpdateContent(infoElement)
 }
 
 func (e *ShipPositionElement) Render(v *View) error {
 	positions := e.history.Positions()
 	hue := shipTypeToHue(e.history)
 	if len(positions) == 0 {
-		logrus.Debug("no positions", "mmsi", e.history.MMSI)
 		return nil
 	}
+
+	// TODO we're reloading sprites and primitives every time through. cut that
+	//  out and start holding some view state
 
 	if err := e.renderHistory(v, hue, positions); err != nil {
 		return err
 	}
 
-	p, err := e.renderPosition(v, hue, positions)
-	if err != nil {
+	if err := e.renderPosition(v, hue, positions); err != nil {
 		return err
 	}
 
-	e.curPosition = p
 	return nil
 }
 
-func (e *ShipPositionElement) renderPosition(view *View, hue Hue, positions []shipdata.Positionable) (BaseMapPosition, error) {
-	currentPosition := positions[len(positions)-1]
-	baseMapPosition := view.BaseMapPosition(currentPosition.GetPositionReport())
+func (e *ShipPositionElement) renderPosition(view *View, hue Hue, positions []shipdata.Positionable) error {
+	e.curPosition = view.BaseMapPosition(positions[len(positions)-1].GetPositionReport())
 
 	var sprite *Sprite
 	var err error
 	if hue == UnknownHue {
 		// return the special "unknown" dot
 		if sprite, err = e.SpecialSheet.GetSprite("unknown"); err != nil {
-			logrus.WithError(err).Error("could not load special sprite 'unknown'")
-			return BaseMapPosition{}, err
+			logger.WithError(err).Error("could not load special sprite 'unknown'")
+			return err
 		}
 	} else {
 		if sprite, err = e.DotSheet.GetSprite(hue, "normal"); err != nil {
-			logrus.WithError(err).Errorf("could not load sprite with hue %v", hue)
-			return BaseMapPosition{}, err
+			logger.WithError(err).Errorf("could not load sprite with hue %v", hue)
+			return err
 		}
 	}
 
@@ -187,12 +170,12 @@ func (e *ShipPositionElement) renderPosition(view *View, hue Hue, positions []sh
 
 	// TODO: Set hazardous cargo markers
 
-	if err := view.ScreenRenderer.Copy(sprite.Texture, sprite.Rect, toDestRect(&baseMapPosition, defaultDestSpriteSizePixels)); err != nil {
-		logrus.WithError(err).Error("rendering ship history")
-		return BaseMapPosition{}, err
+	if err := view.ScreenRenderer.Copy(sprite.Texture, sprite.Rect, toDestRect(&e.curPosition, defaultDestSpriteSizePixels)); err != nil {
+		logger.WithError(err).Error("rendering ship history")
+		return err
 	}
 
-	return baseMapPosition, nil
+	return nil
 }
 
 func (e *ShipPositionElement) renderHistory(view *View, hue Hue, positions []shipdata.Positionable) error {
@@ -218,17 +201,17 @@ func (e *ShipPositionElement) renderHistory(view *View, hue Hue, positions []shi
 	}
 
 	if err := view.ScreenRenderer.SetDrawColor(r, g, b, trackAlpha); err != nil {
-		logrus.WithError(err).Warn("setting the draw color")
+		logger.WithError(err).Warn("setting the draw color")
 		return err
 	}
 
 	if err := view.ScreenRenderer.DrawLines(sdlPoints); err != nil {
-		logrus.WithError(err).Warn("rendering track lines")
+		logger.WithError(err).Warn("rendering track lines")
 		return err
 	}
 
 	if err := view.ScreenRenderer.DrawRects(sdlRects); err != nil {
-		logrus.WithError(err).Warn("rendering track points")
+		logger.WithError(err).Warn("rendering track points")
 		return err
 	}
 
@@ -306,6 +289,6 @@ func shipTypeToHue(history *shipdata.ShipHistory) Hue {
 		return UnknownHue // other
 	}
 
-	logrus.WithField("type num", voyagedata.ShipType).Warn("mapping an unhandled ship type")
+	logger.WithField("type num", voyagedata.ShipType).Warn("mapping an unhandled ship type")
 	return 0
 }

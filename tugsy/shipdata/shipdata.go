@@ -54,7 +54,6 @@ func (h *ShipHistory) VoyageData() *SourcedStaticVoyageData {
 func (h *ShipHistory) addPosition(report Positionable) {
 	h.Lock()
 	defer h.Unlock()
-
 	h.positions = append(h.positions, report)
 }
 
@@ -176,9 +175,12 @@ func (aisData *AISData) PrunePositions() {
 func (aisData *AISData) ShipHistories() []*ShipHistory {
 	aisData.Lock()
 	defer aisData.Unlock()
+
 	shs := make([]*ShipHistory, len(aisData.mmsiHistories), len(aisData.mmsiHistories))
-	for i, sh := range aisData.mmsiHistories {
+	i := 0
+	for _, sh := range aisData.mmsiHistories {
 		shs[i] = sh
+		i++
 	}
 
 	return shs

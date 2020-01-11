@@ -19,6 +19,10 @@ const (
 
 var NoViewConfigFound = errors.New("could not find view configs")
 
+type Teardownable interface {
+	Teardown() error
+}
+
 type ViewConfig struct {
 	MapName string
 	North   float64

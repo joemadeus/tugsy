@@ -2,10 +2,10 @@ package views
 
 import (
 	"math"
+	"reflect"
 	"sync"
 
 	"github.com/joemadeus/tugsy/tugsy/config"
-	"github.com/joemadeus/tugsy/tugsy/shipdata"
 	logger "github.com/sirupsen/logrus"
 	image "github.com/veandco/go-sdl2/img"
 	"github.com/veandco/go-sdl2/sdl"
@@ -56,21 +56,19 @@ type ChildElement interface {
 }
 
 type RootElement struct {
-	baseInfoElement     *BaseInfoElement
-	allPositionsElement *AllPositionElements
+	baseInfoElement     ParentElement
+	allPositionsElement ParentElement
 	// wxElement           *WxElement
+
+	touchFluff float64
 }
 
-func NewRootElement(cfg *config.Config, renderer *sdl.Renderer, sprites *SpriteSet, ais *shipdata.AISData) (*RootElement, error) {
-	var ele *RootElement
-	var err error
-	ele.baseInfoElement, err = NewBaseInfoElement(cfg, renderer)
-	if err != nil {
-		return nil, err
+func NewRootElement(cfg *config.Config, baseEle, allPosEle ParentElement) *RootElement {
+	return &RootElement{
+		touchFluff:          cfg.GetFloat64("touchFluff"),
+		baseInfoElement:     baseEle,
+		allPositionsElement: allPosEle,
 	}
-
-	ele.allPositionsElement = NewAllPositionElements(sprites, ais)
-	return ele, nil
 }
 
 func (e *RootElement) ClosestChild(x, y int32) (ChildElement, float64) {
@@ -93,7 +91,7 @@ func (e *RootElement) ClosestChild(x, y int32) (ChildElement, float64) {
 }
 
 func (e *RootElement) Render(v *View) error {
-	for _, ele := range []UIElement{e.allPositionsElement, e.baseInfoElement} {
+	for _, ele := range []UIElement{e.baseInfoElement, e.allPositionsElement} {
 		if err := ele.Render(v); err != nil {
 			return err
 		}
@@ -102,11 +100,13 @@ func (e *RootElement) Render(v *View) error {
 	return nil
 }
 
-// Touch returns the first UIElement whose bounds are closest to the given X & Y, or
-// nil if no element is within the given fluff value (as measured in screen pixels)
-func (e *RootElement) Touch(x, y int32, fluff float64) error {
+// Touch finds the ChildElement whose Distance() is closest to the given X & Y and
+// is within the RootElement's touchFluff value. If one is found, the ChildELement's
+// HandleTouch() is invoked
+func (e *RootElement) Touch(x, y int32) error {
+	logger.Debugf("RootElement touch at %d, %d", x, y)
 	closest, dist := e.ClosestChild(x, y)
-	if dist > fluff {
+	if dist > e.touchFluff {
 		return nil
 	}
 
@@ -163,12 +163,17 @@ func (e *BaseInfoElement) ClosestChild(x, y int32) (ChildElement, float64) {
 		return nil, math.MaxFloat64
 	}
 
+	// TODO: shortcut... test that the point specified is within the BaseInfoElement's
+	//  rect before traversing its tree of children
+
 	contentChild, contentD := e.content.ClosestChild(x, y)
 	closeD := e.close.Distance(x, y)
 	if closeD < contentD {
+		logger.Debugf("BaseInfoElement ClosestChild at %s, %f", "CloseElement", closeD)
 		return e.close, closeD
 	}
 
+	logger.Debugf("BaseInfoElement ClosestChild at %s, %f", reflect.TypeOf(contentChild).String(), contentD)
 	return contentChild, contentD
 }
 
@@ -235,8 +240,11 @@ func NewCloseElement(cfg *config.Config, renderer *sdl.Renderer, base *BaseInfoE
 	return cl, nil
 }
 
+// Distance calculates the screen distance from the center of the close icon's dst rect
 func (e *CloseElement) Distance(x, y int32) float64 {
-
+	d := screenDistance(x, y, closeButtonW/2.0+closeButtonDstX, closeButtonH/2.0+closeButtonDstY)
+	logger.Debugf("CloseElement distance is %f", d)
+	return d
 }
 
 func (e *CloseElement) HandleTouch() error {

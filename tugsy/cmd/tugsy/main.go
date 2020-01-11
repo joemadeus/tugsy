@@ -33,6 +33,12 @@ func run() int {
 		return 1
 	}
 
+	loglevel, err := logger.ParseLevel(cfg.GetString("loglevel"))
+	if err != nil {
+		logger.WithError(err).Fatalf("bad log level in config")
+	}
+	logger.SetLevel(loglevel)
+
 	aisData := shipdata.NewAISData()
 
 	logger.Info("Starting the position culling loop")
@@ -65,7 +71,6 @@ func run() int {
 	logger.Info("Initializing INIT_EVERYTHING")
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		logger.WithError(err).Fatalf("failed to INIT_EVERYTHING")
-		return 1
 	}
 	defer sdl.Quit()
 
@@ -98,12 +103,23 @@ func run() int {
 	if err != nil {
 		logger.WithError(err).Fatal("could not load sprites from config")
 	}
+	logger.Info("Initialized sprites")
 
-	viewSet, err := views.ViewSetFromConfig(cfg, renderer)
+	// create the root view element and its direct children
+	baseInfoElement, err := views.NewBaseInfoElement(cfg, renderer)
+	if err != nil {
+		logger.WithError(err).Fatal("Could not initialize BaseInfoElement")
+	}
+	allPositionsElement := views.NewAllPositionElements(spriteSet, aisData, baseInfoElement)
+	rootElement := views.NewRootElement(cfg, baseInfoElement, allPositionsElement)
+	logger.Info("Initialized RootElement & children")
+
+	viewSet, err := views.ViewSetFromConfig(cfg, renderer, rootElement)
 	if err != nil {
 		logger.WithError(err).Fatal("Could not load views from config")
 	}
 	defer viewSet.Teardown()
+	logger.Info("Initialized ViewSet")
 
 	logger.Info("Showing window")
 	window.Show()
@@ -115,9 +131,8 @@ func run() int {
 	}
 
 	returnCode := -1
+	delayMillis := 1000 / targetFPS
 	var ticks uint32
-	var delayMillis uint32
-	delayMillis = 1000 / targetFPS
 
 	logger.Info("Starting the UI loop")
 	for returnCode == -1 {
@@ -131,10 +146,16 @@ func run() int {
 			continue
 
 		case *sdl.MouseButtonEvent:
-			if t.Type == sdl.MOUSEBUTTONDOWN {
+			logger.Debugf("MOUSE EVENT: %+v", event)
+			if t.Type == sdl.MOUSEBUTTONUP {
+				mouseEvent := event.(*sdl.MouseButtonEvent)
+				if err := rootElement.Touch(mouseEvent.X, mouseEvent.Y); err != nil {
+					logger.WithError(err).Error("unable to handle touch event")
+				}
 			}
 
 		case *sdl.KeyboardEvent:
+			// TODO this should be input from the single button on the front panel
 			switch {
 			case t.Keysym.Sym == sdl.K_SPACE && t.Type == sdl.KEYDOWN:
 				currentView = viewSet.NextView()
@@ -143,9 +164,9 @@ func run() int {
 
 		// Redisplay
 		if err = currentView.Display(); err != nil {
-			logger.WithError(err).Fatalf("Could not refresh the display, view %s", currentView.Name)
+			logger.WithError(err).Errorf("Could not refresh the display, view %s", currentView.Name)
 			returnCode = 128
-			break
+			continue
 		}
 
 		// cap the frame rate to targetFPS

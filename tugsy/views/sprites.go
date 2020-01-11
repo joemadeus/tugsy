@@ -53,10 +53,6 @@ func NewSpriteSet(screenRenderer *sdl.Renderer, config *config.Config) (*SpriteS
 	}, nil
 }
 
-type Teardownable interface {
-	Teardown() error
-}
-
 func sourceRect(row, column, size int32) *sdl.Rect {
 	return &sdl.Rect{
 		H: size,
@@ -152,7 +148,6 @@ func NewSpecialSheet(screenRenderer *sdl.Renderer, config *config.Config) (*Spec
 	special.MarkerMap["hazard_b"] = int32(2)
 	special.MarkerMap["hazard_c"] = int32(3)
 	special.MarkerMap["hazard_d"] = int32(4)
-	special.MarkerMap["close_button"] = int32(5)
 
 	return special, nil
 }

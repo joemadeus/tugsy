@@ -36,8 +36,16 @@ func main() {
 	}()
 
 	fmt.Println("Launching server...")
-	ln, _ := net.Listen("tcp4", "127.0.0.1:10110")
-	conn, _ := ln.Accept()
+	ln, err := net.Listen("tcp4", "127.0.0.1:10110")
+	if err != nil {
+		fmt.Printf("could not listen: %v\n", err)
+	}
+
+	conn, err := ln.Accept()
+	if err != nil {
+		fmt.Printf("could not accept: %v\n", err)
+	}
+
 	defer conn.Close()
 
 	for {
