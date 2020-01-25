@@ -29,6 +29,11 @@ type ShipHistory struct {
 	// append new positions to the end
 	positions  []Positionable
 	voyagedata *SourcedStaticVoyageData
+
+	// a cache of positions ready to go to the UI, emptied by calls
+	// that modify the positions slice, populated by calls to get
+	// positions, but never ever modified
+	posCache []Positionable
 }
 
 func NewShipHistory(mmsi uint32) *ShipHistory {
@@ -40,9 +45,13 @@ func NewShipHistory(mmsi uint32) *ShipHistory {
 func (h *ShipHistory) Positions() []Positionable {
 	h.Lock()
 	defer h.Unlock()
-	ret := make([]Positionable, len(h.positions), len(h.positions))
-	copy(ret, h.positions)
-	return ret
+
+	if h.posCache == nil {
+		h.posCache = make([]Positionable, len(h.positions), len(h.positions))
+		copy(h.posCache, h.positions)
+	}
+
+	return h.posCache
 }
 
 func (h *ShipHistory) VoyageData() *SourcedStaticVoyageData {
@@ -55,6 +64,7 @@ func (h *ShipHistory) addPosition(report Positionable) {
 	h.Lock()
 	defer h.Unlock()
 	h.positions = append(h.positions, report)
+	h.posCache = nil
 }
 
 func (h *ShipHistory) setVoyageData(d *SourcedStaticVoyageData) {
@@ -83,6 +93,7 @@ func (h *ShipHistory) prune(since time.Time) int {
 	}
 
 	h.positions = h.positions[a:]
+	h.posCache = nil
 	return len(h.positions)
 }
 
@@ -151,11 +162,12 @@ func (aisData *AISData) PrunePositions() {
 		select {
 		case <-tick:
 			logger.Debug("culling positions")
-			// make a copy of the keyset so we don't have to maintain the lock on aisData.
-			// doing so means potentially examining only a subset of all the shipdata, but
-			// that's alright: this isn't toooo important a process & we'll get to the ones
-			// we miss next time
 			since := time.Now().Add(-aisData.PositionRetentionDur)
+
+			// make a copy of the histories refs so we don't have to maintain the lock on
+			// aisData. doing so means potentially examining only a subset of all the shipdata,
+			// but that's alright: this isn't toooo important a process & we'll get to the ones
+			// we miss next time
 			for _, sh := range aisData.ShipHistories() {
 				if sh.prune(since) == 0 {
 					aisData.Lock()
@@ -186,8 +198,7 @@ func (aisData *AISData) ShipHistories() []*ShipHistory {
 	return shs
 }
 
-// Returns the ShipHistory/true associated with the given MMSI, or nil/false if it doesn't.
-// Calling code should lock using the history's mutex if modifying or querying data.
+// Returns the ShipHistory/true associated with the given MMSI, or nil/false if it doesn't
 func (aisData *AISData) ShipHistory(mmsi uint32) (*ShipHistory, bool) {
 	aisData.Lock()
 	defer aisData.Unlock()

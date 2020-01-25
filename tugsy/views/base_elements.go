@@ -16,7 +16,7 @@ const (
 	infoBorderFile             = "infoBorder.png"
 	infoPaneDstX, infoPaneDstY = 230, 10
 	infoPaneSrcX, infoPaneSrcY = 0, 0
-	infoPaneH, infoPaneW       = 120, 240
+	infoPaneH, infoPaneW       = 200, 240
 
 	closeButtonFile                  = "close.png"
 	closeButtonDstX, closeButtonDstY = 205, 35
@@ -123,26 +123,26 @@ type BaseInfoElement struct {
 	content ParentElement
 	close   ChildElement
 
-	Background  *sdl.Texture
-	Border      *sdl.Texture
-	BaseSrcRect *sdl.Rect
-	BaseDstRect *sdl.Rect
+	background *sdl.Texture
+	border     *sdl.Texture
+	srcRect    *sdl.Rect
+	dstRect    *sdl.Rect
 }
 
 func NewBaseInfoElement(cfg *config.Config, renderer *sdl.Renderer) (*BaseInfoElement, error) {
 	logger.Info("Loading 'Info' element")
 	ele := &BaseInfoElement{
-		BaseSrcRect: &sdl.Rect{X: infoPaneSrcX, Y: infoPaneSrcY, H: infoPaneH, W: infoPaneW},
-		BaseDstRect: &sdl.Rect{X: infoPaneDstX, Y: infoPaneDstY, H: infoPaneH, W: infoPaneW},
+		srcRect: &sdl.Rect{X: infoPaneSrcX, Y: infoPaneSrcY, H: infoPaneH, W: infoPaneW},
+		dstRect: &sdl.Rect{X: infoPaneDstX, Y: infoPaneDstY, H: infoPaneH, W: infoPaneW},
 	}
 
 	var err error
-	ele.Background, err = image.LoadTexture(renderer, cfg.SpriteSheetPath(infoBackgroundFile))
+	ele.background, err = image.LoadTexture(renderer, cfg.SpriteSheetPath(infoBackgroundFile))
 	if err != nil {
 		return nil, err
 	}
 
-	ele.Border, err = image.LoadTexture(renderer, cfg.SpriteSheetPath(infoBorderFile))
+	ele.border, err = image.LoadTexture(renderer, cfg.SpriteSheetPath(infoBorderFile))
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +186,9 @@ func (e *BaseInfoElement) Render(v *View) error {
 		return nil
 	}
 
-	if err := v.ScreenRenderer.Copy(e.Background, e.BaseSrcRect, e.BaseDstRect); err != nil {
+	// frame on top of the content on top of the background
+
+	if err := v.ScreenRenderer.Copy(e.background, e.srcRect, e.dstRect); err != nil {
 		return err
 	}
 
@@ -194,7 +196,7 @@ func (e *BaseInfoElement) Render(v *View) error {
 		return err
 	}
 
-	if err := v.ScreenRenderer.Copy(e.Border, e.BaseSrcRect, e.BaseDstRect); err != nil {
+	if err := v.ScreenRenderer.Copy(e.border, e.srcRect, e.dstRect); err != nil {
 		return err
 	}
 
@@ -219,16 +221,16 @@ func (e *BaseInfoElement) UpdateContent(c ParentElement) error {
 type CloseElement struct {
 	closedElement *BaseInfoElement
 
-	tex        *sdl.Texture
-	texSrcRect *sdl.Rect
-	texDstRect *sdl.Rect
+	tex     *sdl.Texture
+	srcRect *sdl.Rect
+	dstRect *sdl.Rect
 }
 
 func NewCloseElement(cfg *config.Config, renderer *sdl.Renderer, base *BaseInfoElement) (*CloseElement, error) {
 	cl := &CloseElement{
 		closedElement: base,
-		texSrcRect:    &sdl.Rect{X: closeButtonSrcX, Y: closeButtonSrcY, H: closeButtonH, W: closeButtonW},
-		texDstRect:    &sdl.Rect{X: closeButtonDstX, Y: closeButtonDstY, H: closeButtonH, W: closeButtonW},
+		srcRect:       &sdl.Rect{X: closeButtonSrcX, Y: closeButtonSrcY, H: closeButtonH, W: closeButtonW},
+		dstRect:       &sdl.Rect{X: closeButtonDstX, Y: closeButtonDstY, H: closeButtonH, W: closeButtonW},
 	}
 
 	var err error
@@ -252,7 +254,7 @@ func (e *CloseElement) HandleTouch() error {
 }
 
 func (e *CloseElement) Render(v *View) error {
-	return v.ScreenRenderer.Copy(e.tex, e.texSrcRect, e.texDstRect)
+	return v.ScreenRenderer.Copy(e.tex, e.srcRect, e.dstRect)
 }
 
 func screenDistance(sX, sY int32, tX, tY float64) float64 {

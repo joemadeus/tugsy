@@ -15,13 +15,19 @@ clean:
 	rm tugsy
 
 special-sprites:
+	cd ${SPRITES}/special && \
 	montage \
-		${SPRITES}/special/H0-S0-V50.png  \
-		${SPRITES}/special/R1-H0.png \
-		${SPRITES}/special/R2-H0.png \
-		${SPRITES}/special/R3-H0.png \
-		${SPRITES}/special/R4-H0.png \
-		-tile 1x6 \
+		`ls -1 *.png` \
+		-tile 1x \
 		-geometry 32x32x0x0 \
 		-background transparent \
-		${SPRITES}/special.png
+		../special.png
+
+flag-sprites:
+	cd ${SPRITES}/flags && \
+	montage \
+		`ls -1 *.png` \
+		-tile 1x \
+		-geometry 64x64x0x0 \
+		-background transparent \
+		../flags.png
