@@ -19,6 +19,7 @@ const (
 // BaseInfoElement
 type ShipInfoElement struct {
 	*SpriteSet
+
 	history *shipdata.ShipHistory
 }
 
@@ -31,7 +32,16 @@ func (e *ShipInfoElement) ClosestChild(x, y int32) (ChildElement, float64) {
 }
 
 func (e *ShipInfoElement) Render(v *View) error {
-	// TODO
+	tex, err := v.ScreenRenderer.CreateTexture(PixelFormat, sdl.TEXTUREACCESS_STATIC, 0, 0)
+	if err != nil {
+		return err
+	}
+
+	flag, err := e.SpriteSet.FlagSheet.GetSprite("JO")
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -512,7 +522,7 @@ var MIDInformalNames = map[int]string{
 	601: "South Africa",
 	603: "Angola",
 	605: "Algeria",
-	607: "St. Paul & Amsterdam Islands (FR)",
+	607: "St. Paul, Amsterdam Islands (FR)",
 	608: "Ascension Island (UK)",
 	609: "Burundi",
 	610: "Benin",

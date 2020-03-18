@@ -17,7 +17,10 @@ const (
 	ScreenTitle  = "Tugsy"
 )
 
-var NoViewConfigFound = errors.New("could not find view configs")
+var (
+	NoViewConfigFound = errors.New("could not find view configs")
+	PixelFormat       = uint32(sdl.PIXELFORMAT_RGBA32)
+)
 
 type Teardownable interface {
 	Teardown() error
