@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+option go_package = "main";
+
+message SensorReadings {
+    repeated SensorReading readings = 1;
+}
+
+message SensorReading {
+    string name = 1;
+    string location = 2;
+    int64 recorded = 3;
+    int64 received = 4;
+    repeated Data data = 5;
+}
+
+message Data {
+    string key = 1;
+    oneof string_or_double {
+        string string_value = 2;
+        double double_value = 3;
+    }
+}
